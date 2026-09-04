@@ -36,7 +36,7 @@ async function insertEntry(
   const db = getDb();
   const date = input.date ?? todayISO();
   if (!isValidDate(date)) throw new Error(`Invalid date: ${date}`);
-  const [id] = await db("transactions").insert({
+  const inserted = await db("transactions").insert({
     amount: round2(input.amount),
     category: normCat(input.category),
     note: input.note ?? null,
@@ -46,8 +46,12 @@ async function insertEntry(
     is_income: input.is_income,
     created_at: nowTunisDateTime(),
     updated_at: nowTunisDateTime(),
-  });
-  const row = await db("transactions").where({ id }).first();
+  }).returning("id");
+  const rowId =
+    typeof inserted[0] === "object"
+      ? (inserted[0] as { id: number }).id
+      : (inserted[0] as number);
+  const row = await db("transactions").where({ id: rowId }).first();
   return normalizeRow(row as TransactionRow);
 }
 

@@ -1,30 +1,34 @@
+import "dotenv/config";
 import type { Knex } from "knex";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath =
-  process.env.RAFIQ_DB_PATH ?? path.join(__dirname, "..", "..", "rafiq.db");
+
+function sqliteConfig(ext: string): Knex.Config {
+  const dbPath =
+    process.env.RAFIQ_DB_PATH ?? path.join(__dirname, "..", "..", "rafiq.db");
+  return {
+    client: "better-sqlite3",
+    connection: { filename: dbPath },
+    useNullAsDefault: true,
+    migrations: { directory: path.join(__dirname, "migrations"), extension: ext },
+  };
+}
+
+function pgConfig(ext: string): Knex.Config {
+  return {
+    client: "pg",
+    connection: process.env.DATABASE_URL,
+    migrations: { directory: path.join(__dirname, "migrations"), extension: ext },
+  };
+}
+
+const useSqlite = process.env.DB_CLIENT === "sqlite";
 
 const config: { [key: string]: Knex.Config } = {
-  development: {
-    client: "better-sqlite3",
-    connection: { filename: dbPath },
-    useNullAsDefault: true,
-    migrations: {
-      directory: path.join(__dirname, "migrations"),
-      extension: "ts",
-    },
-  },
-  production: {
-    client: "better-sqlite3",
-    connection: { filename: dbPath },
-    useNullAsDefault: true,
-    migrations: {
-      directory: path.join(__dirname, "migrations"),
-      extension: "js",
-    },
-  },
+  development: useSqlite ? sqliteConfig("ts") : pgConfig("ts"),
+  production: useSqlite ? sqliteConfig("js") : pgConfig("js"),
 };
 
 export default config;
