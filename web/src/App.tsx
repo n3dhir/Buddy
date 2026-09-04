@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Breakdown, type Entry, type Period, type Summary } from "./api";
+import logoUrl from "./assets/logo.svg";
 
 const input =
   "w-full rounded-lg border border-hairline bg-canvas px-3 py-2.5 text-sm text-ink placeholder:text-ink-tertiary focus:border-brand-hover focus:outline-none focus-visible:outline-2 focus-visible:outline-brand/50";
@@ -71,9 +72,7 @@ export default function App() {
       <nav className="sticky top-0 z-10 border-b border-hairline bg-canvas/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand text-sm font-semibold text-white">
-              R
-            </span>
+            <img src={logoUrl} alt="Rafiq logo" className="h-7 w-7 rounded-lg" />
             <span className="hidden text-sm font-medium min-[420px]:inline">Rafiq</span>
             <span className="hidden rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted sm:inline">
               Tunis · UTC+1
