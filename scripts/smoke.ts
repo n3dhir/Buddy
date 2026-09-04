@@ -10,6 +10,7 @@ import {
 } from "../src/tools/finance.js";
 
 async function main() {
+  process.env.DB_CLIENT ??= "sqlite";
   process.env.RAFIQ_DB_PATH ??= ":memory:";
   const db = getDb();
   await db.migrate.latest();

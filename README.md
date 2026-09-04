@@ -1,26 +1,62 @@
-# Rafiq — personal MCP server
+# Rafiq — personal finance (MCP + web)
 
-v1: finance / expense tracker. SQLite + Knex + MCP stdio transport.
+Expense/income tracker exposed two ways, one shared Postgres DB:
+chat via MCP tools, full read/write UI via web. Refresh the page to see
+chat-made changes (no live sync by design).
 
 ## Setup
 
 ```bash
+cp .env.example .env   # set DATABASE_URL, PORT
 npm install
-npm run migrate   # creates rafiq.db (gitignored)
-npm run build
+npm run migrate        # creates `transactions` table
+npm run import:pg      # one-off: copy legacy rafiq.db (SQLite) rows into PG
 ```
+
+Legacy SQLite fallback (smoke tests): `DB_CLIENT=sqlite RAFIQ_DB_PATH=...`.
 
 ## Run
 
+Two processes, one DB:
+
 ```bash
-npm start          # stdio MCP server (dist/server.js)
-npm run dev        # tsx, no build
-npm run test:smoke # in-memory check of all 7 tools
+npm start          # MCP stdio server (chat) — dist/server.js
+npm run start:web  # web API + UI on :3000 — dist/web.js
 ```
 
-## Claude Desktop / Claude Code
+Dev:
 
-Add as an MCP server with stdio transport:
+```bash
+npm run dev        # MCP server via tsx
+npm run dev:api    # Express API via tsx (:3000)
+npm run dev:web    # Vite dev server (proxies /api → :3000)
+npm run test:smoke # tool checks (in-memory SQLite)
+```
+
+## REST API (same functions as the MCP tools)
+
+| Method | Route | Tool |
+|---|---|---|
+| POST | `/api/entries/expense` | `log_expense` |
+| POST | `/api/entries/income` | `log_income` |
+| GET | `/api/summary?period=&category?` | `get_summary` |
+| GET | `/api/breakdown?period=` | `get_category_breakdown` |
+| GET | `/api/entries?date_from&date_to&category&payment_method&is_income&limit` | `list_entries` |
+| PATCH | `/api/entries/:id` | `edit_entry` |
+| DELETE | `/api/entries/:id` | `delete_entry` |
+
+Errors: 400 invalid input (zod issues), 404 unknown id.
+
+## MCP tools
+
+`log_expense`, `log_income`, `get_summary`, `get_category_breakdown`
+(spending only), `list_entries`, `edit_entry`, `delete_entry`.
+
+`payment_method` is free-form (e.g. `cash`, `card`, `bank transfer`).
+Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
+= fixed UTC+1). `week` = last 7 days, `month`/`year` = calendar.
+
+## Claude Desktop / Code
 
 ```json
 {
@@ -28,28 +64,19 @@ Add as an MCP server with stdio transport:
     "rafiq": {
       "command": "node",
       "args": ["/mnt/data/projects/Rafiq/dist/server.js"],
-      "env": { "RAFIQ_DB_PATH": "/mnt/data/projects/Rafiq/rafiq.db" }
+      "env": { "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/rafiq" }
     }
   }
 }
 ```
 
-## Tools (v1)
-
-`log_expense`, `log_income`, `get_summary`, `get_category_breakdown`,
-`list_entries`, `edit_entry`, `delete_entry`.
-
-`payment_method` is free-form (e.g. `cash`, `card`, `bank transfer`).
-Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`).
-`week` = last 7 days, `month`/`year` = calendar.
-
 ## Layout
 
 ```
-src/db/         knexfile, client, migrations/
-src/tools/      finance.ts (7 tools)
-src/resources/  stub — after tool layer verified
-src/prompts/    stub — after tool layer verified
+src/db/         knexfile, client (pg default, sqlite fallback), migrations/
+src/tools/      finance.ts (7 tools) + utils.ts (Tunis time, normalize)
+src/web.ts      Express API + static frontend serving
 src/server.ts   MCP stdio entry
-scripts/smoke.ts in-memory smoke test
+web/            Vite + React + Tailwind UI (dashboard + entries CRUD)
+scripts/        smoke.ts, import-sqlite-to-pg.ts
 ```
