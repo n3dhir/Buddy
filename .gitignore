@@ -1,0 +1,6 @@
+node_modules/
+dist/
+rafiq.db
+rafiq.db-journal
+*.local
+.DS_Store

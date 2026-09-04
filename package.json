@@ -1,0 +1,27 @@
+{
+  "name": "rafiq",
+  "version": "0.1.0",
+  "description": "Rafiq — personal MCP server (v1: finance)",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "migrate": "tsx ./node_modules/knex/bin/cli.js --knexfile src/db/knexfile.ts migrate:latest",
+    "migrate:make": "tsx ./node_modules/knex/bin/cli.js --knexfile src/db/knexfile.ts migrate:make",
+    "test:smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "better-sqlite3": "^11.10.0",
+    "knex": "^3.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
