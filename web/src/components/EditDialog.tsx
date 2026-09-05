@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Entry } from "../api";
 import { btnPrimary, btnSecondary, eyebrow, input } from "../ui";
+import { toast } from "./Toaster";
 
 export default function EditDialog({ entry, onClose, onDone }: { entry: Entry; onClose: () => void; onDone: () => void }) {
   const [amount, setAmount] = useState(String(entry.amount));
@@ -9,6 +10,14 @@ export default function EditDialog({ entry, onClose, onDone }: { entry: Entry; o
   const [date, setDate] = useState(entry.date);
   const [payment, setPayment] = useState(entry.payment_method ?? "");
   const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
@@ -22,6 +31,7 @@ export default function EditDialog({ entry, onClose, onDone }: { entry: Entry; o
         payment_method: payment || null,
       });
       onClose();
+      toast("Entry updated");
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "save failed");

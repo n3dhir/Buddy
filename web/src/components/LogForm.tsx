@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { toast } from "./Toaster";
 import { btnPrimary, card, eyebrow, input } from "../ui";
 
 export default function LogForm({ onDone }: { onDone: () => void }) {
@@ -27,6 +28,7 @@ export default function LogForm({ onDone }: { onDone: () => void }) {
       setNote("");
       setDate("");
       setPayment("");
+      toast(kind === "expense" ? "Expense logged" : "Income logged");
       onDone();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "save failed");

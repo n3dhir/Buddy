@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ALL_SCOPES, type TokenInfo } from "../api";
+import EmptyState from "./EmptyState";
+import { toast } from "./Toaster";
 import { btnGhost, btnPrimary, card, eyebrow, input } from "../ui";
 
 export default function TokensPanel() {
@@ -31,6 +33,7 @@ export default function TokensPanel() {
       setMsg(null);
       await api.updateToken(id, { scopes: editScopes });
       setEditingId(null);
+      toast("Token scopes updated");
       loadTokens();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "save failed");
@@ -44,6 +47,7 @@ export default function TokensPanel() {
       const t = await api.createToken(name, scopes);
       setFresh(t.token);
       setName("");
+      toast("Token created — copy it now");
       loadTokens();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "create failed");
@@ -120,13 +124,16 @@ export default function TokensPanel() {
                 >
                   {editingId === t.id ? "Close" : "Scopes"}
                 </button>
-                <button
-                  onClick={() =>
-                    api
-                      .revokeToken(t.id)
-                      .then(loadTokens)
-                      .catch((err: Error) => setMsg(err.message))
-                  }
+              <button
+                onClick={() =>
+                  api
+                    .revokeToken(t.id)
+                    .then(() => {
+                      toast("Token revoked");
+                      loadTokens();
+                    })
+                    .catch((err: Error) => setMsg(err.message))
+                }
                   className={btnGhost}
                   aria-label={`Revoke token ${t.id}`}
                 >
@@ -166,7 +173,9 @@ export default function TokensPanel() {
           </li>
         ))}
         {tokens.length === 0 && (
-          <p className="py-4 text-sm text-ink-subtle">No tokens yet.</p>
+          <div className="py-4">
+            <EmptyState title="No tokens yet" hint="Create one above to connect chat or scripts." />
+          </div>
         )}
       </ul>
     </section>

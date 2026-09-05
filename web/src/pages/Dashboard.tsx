@@ -4,8 +4,11 @@ import { api, getToken, getUser, setSession, type AuthUser, type Breakdown, type
 import logoUrl from "../assets/logo.svg";
 import { btnGhost, card, eyebrow, greeting, money, periodTitle } from "../ui";
 import EditDialog from "../components/EditDialog";
+import EmptyState from "../components/EmptyState";
 import LogForm from "../components/LogForm";
+import DashboardSkeleton from "../components/Skeleton";
 import Stat from "../components/Stat";
+import Toaster, { toast } from "../components/Toaster";
 import TokensPanel from "../components/TokensPanel";
 
 export default function Dashboard() {
@@ -58,8 +61,8 @@ export default function Dashboard() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-canvas">
-        <img src={logoUrl} alt="" className="h-10 w-10 animate-pulse rounded-xl" />
+      <div className="min-h-screen bg-canvas text-ink">
+        <DashboardSkeleton />
       </div>
     );
   }
@@ -172,7 +175,7 @@ export default function Dashboard() {
           </div>
           <div className="mt-5 space-y-4">
             {breakdown?.breakdown.length === 0 && (
-              <p className="text-sm text-ink-subtle">Nothing spent in this period.</p>
+              <EmptyState title="Nothing spent here yet" hint="Log your first expense and it will show up by category." />
             )}
             {breakdown?.breakdown.map((b) => (
               <div key={b.category}>
@@ -249,7 +252,10 @@ export default function Dashboard() {
                         onClick={() =>
                           void api
                             .remove(e.id)
-                            .then(load)
+                            .then(() => {
+                              toast("Entry deleted");
+                              load();
+                            })
                             .catch((err: Error) => setError(err.message))
                         }
                         className={btnGhost}
@@ -262,7 +268,9 @@ export default function Dashboard() {
                 </li>
               ))}
               {visible.length === 0 && (
-                <p className="py-6 text-center text-sm text-ink-subtle">No entries.</p>
+                <div className="py-4">
+                  <EmptyState title="No entries yet" hint="Use the log form to record your first one — or send it from chat." />
+                </div>
               )}
             </ul>
           </div>
@@ -280,6 +288,7 @@ export default function Dashboard() {
       {editing && (
         <EditDialog entry={editing} onClose={() => setEditing(null)} onDone={load} />
       )}
+      <Toaster />
     </div>
   );
 }
