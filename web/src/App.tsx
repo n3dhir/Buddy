@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Breakdown, type Entry, type Period, type Summary } from "./api";
+import { api, getToken, setToken, type Breakdown, type Entry, type Period, type Summary } from "./api";
 import logoUrl from "./assets/logo.svg";
 
 const input =
@@ -40,6 +40,7 @@ export default function App() {
   const [kind, setKind] = useState<"all" | "spending" | "income">("all");
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Entry | null>(null);
+  const [locked, setLocked] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -52,8 +53,10 @@ export default function App() {
       setSummary(s);
       setBreakdown(b);
       setEntries(e);
+      setLocked(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "load failed");
+      if ((err as { status?: number })?.status === 401) setLocked(true);
+      else setError(err instanceof Error ? err.message : "load failed");
     }
   }, [period]);
 
@@ -260,6 +263,8 @@ export default function App() {
       {editing && (
         <EditDialog entry={editing} onClose={() => setEditing(null)} onDone={load} />
       )}
+
+      {locked && <TokenGate onDone={load} />}
     </div>
   );
 }
@@ -390,6 +395,38 @@ function EditDialog({ entry, onClose, onDone }: { entry: Entry; onClose: () => v
           <button type="submit" className={`${btnPrimary} flex-1`}>Save</button>
           <button type="button" onClick={onClose} className={btnSecondary}>Cancel</button>
         </div>
+      </form>
+    </div>
+  );
+}
+function TokenGate({ onDone }: { onDone: () => void }) {
+  const [token, setT] = useState(getToken() ?? "");
+
+  function submit(ev: React.FormEvent) {
+    ev.preventDefault();
+    setToken(token.trim() || null);
+    onDone();
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-canvas p-4">
+      <form onSubmit={submit} className={`${card} w-full max-w-sm p-6`}>
+        <p className={eyebrow}>Rafiq is locked</p>
+        <p className="mt-2 text-sm text-ink-subtle">
+          Enter the API token (RAFIQ_API_TOKEN from the server .env).
+        </p>
+        <input
+          className={`${input} mt-3 font-mono`}
+          type="password"
+          placeholder="API token"
+          value={token}
+          onChange={(e) => setT(e.target.value)}
+          required
+          autoFocus
+        />
+        <button type="submit" className={`${btnPrimary} mt-3 w-full`}>
+          Unlock
+        </button>
       </form>
     </div>
   );

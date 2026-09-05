@@ -1,7 +1,14 @@
-import express, { type Request, type Response } from "express";
+import crypto from "node:crypto";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ZodError } from "zod";
+import { createServer } from "./server.js";
 import {
   CategoryBreakdownSchema,
   DeleteEntrySchema,
@@ -21,6 +28,45 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
+
+// Bearer auth for /mcp and /api (except /api/health).
+// RAFIQ_API_TOKEN unset = open (local dev) with a warning; set it on the VPS.
+function requireToken(req: Request, res: Response, next: NextFunction) {
+  const expected = process.env.RAFIQ_API_TOKEN;
+  if (!expected) {
+    console.warn("RAFIQ_API_TOKEN unset — API/MCP open. Set it in production.");
+    return next();
+  }
+  const got = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const a = Buffer.from(got);
+  const b = Buffer.from(expected);
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
+  res.status(401).json({ error: "unauthorized" });
+}
+
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.use("/api", (req, res, next) => {
+  if (req.path === "/health") return next();
+  requireToken(req, res, next);
+});
+
+// Remote MCP (Streamable HTTP, stateless) — same tools as the stdio server.
+async function handleMcp(req: Request, res: Response) {
+  const server = createServer();
+  try {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).json({ error: "mcp error" });
+  }
+}
+app.post("/mcp", requireToken, handleMcp);
+app.get("/mcp", requireToken, handleMcp);
+app.delete("/mcp", requireToken, handleMcp);
 
 function send(res: Response, fn: () => Promise<unknown>) {
   // Promise.resolve().then() so sync Zod throws become rejections too.

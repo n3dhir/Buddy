@@ -30,12 +30,31 @@ export interface Breakdown {
 
 export type Period = "week" | "month" | "year";
 
+export function getToken(): string | null {
+  return localStorage.getItem("rafiq_token");
+}
+
+export function setToken(t: string | null) {
+  if (t) localStorage.setItem("rafiq_token", t);
+  else localStorage.removeItem("rafiq_token");
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, { ...init, headers });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    const err = new Error((data as { error?: string }).error ?? "unauthorized") as Error & {
+      status?: number;
+    };
+    err.status = 401;
+    throw err;
+  }
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
   return data as T;
 }
