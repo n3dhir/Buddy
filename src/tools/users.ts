@@ -55,7 +55,6 @@ export const CreateTokenSchema = z.object({
 const hashToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex");
 
-/** First registrant inherits legacy (ownerless) rows. */
 export async function register(input) {
   const { username, password } = RegisterSchema.parse(input);
   const db = getDb();
@@ -63,7 +62,6 @@ export async function register(input) {
   if (await db("users").where({ username: name }).first()) {
     deny("username taken", 409);
   }
-  const [{ count }] = await db("users").count({ count: "id" });
   const [id] = await db("users")
     .insert({
       username: name,
@@ -73,9 +71,6 @@ export async function register(input) {
     })
     .returning("id");
   const userId = typeof id === "object" ? id.id : id;
-  if (Number(count) === 0) {
-    await db("transactions").whereNull("user_id").update({ user_id: userId });
-  }
   return { id: userId, username: name };
 }
 

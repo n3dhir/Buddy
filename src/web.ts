@@ -39,15 +39,11 @@ app.use(express.json());
 // Auth: users table. Two credential kinds, both Bearer:
 // - UI session: JWT {sub: userId} from /api/auth/login (full entry scopes)
 // - API tokens: opaque, user-created with chosen scopes, hashed at rest
-// Fresh DB (no users yet) = open, so the first account can register.
 function mintSession(userId) {
   return jwt.sign({ sub: userId }, process.env.RAFIQ_JWT_SECRET, { expiresIn: "30d" });
 }
 
 async function resolveAuth(req) {
-  const db = (await import("./db/client.js")).getDb();
-  const [{ count }] = await db("users").count({ count: "id" });
-  if (Number(count) === 0) return sysCtx();
   const bearer = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!bearer) fail("unauthorized", 401);
   try {
