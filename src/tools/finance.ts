@@ -12,10 +12,10 @@ import {
 } from "./utils.js";
 import { need, PERMS, SYS_CTX, type AuthCtx } from "./users.js";
 
-// Rows are scoped to the caller: admins see everything, users see their own.
-// SYS_CTX (local stdio, tests) bypasses scoping.
+// Rows are scoped to the caller: a token sees only its owner's rows.
+// SYS_CTX (local stdio, tests, fresh DB) bypasses scoping.
 function scope<T>(q: T, ctx: AuthCtx): T {
-  if (!ctx.isAdmin) {
+  if (ctx.userId !== null) {
     (q as { andWhere: (c: object) => void }).andWhere({ user_id: ctx.userId });
   }
   return q;

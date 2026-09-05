@@ -10,11 +10,12 @@ import {
 } from "../src/tools/finance.js";
 import {
   authenticate,
+  authForToken,
+  createToken,
   ctxFor,
-  listUsers,
-  permsFor,
   register,
-  setRole,
+  revokeToken,
+  SCOPES,
 } from "../src/tools/users.js";
 
 async function expectFail(fn: () => Promise<unknown>, label: string) {
@@ -46,11 +47,10 @@ async function main() {
   console.log("delete:", await deleteEntry({ id: e1.id }));
   console.log("list after delete:", await listEntries({}));
 
-  // RBAC: first registrant is admin, rest are users, rows are scoped.
-  const admin = await register({ username: "owner", password: "password123" });
-  console.log("first register role:", admin.role);
-  const member = await register({ username: "sam", password: "password123" });
-  console.log("second register role:", member.role);
+  // Tokens: users are equal, data is scoped, tokens carry chosen scopes.
+  const owner = await register({ username: "owner", password: "password123" });
+  const sam = await register({ username: "sam", password: "password123" });
+  console.log("registered:", owner.username, "+", sam.username);
   await expectFail(
     () => register({ username: "owner", password: "password123" }),
     "duplicate username",
@@ -59,20 +59,20 @@ async function main() {
     () => authenticate({ username: "sam", password: "wrongpass1" }),
     "bad password",
   );
-  const adminCtx = ctxFor(admin.id, "admin", (await permsFor(admin.id)).perms);
-  const userCtx = ctxFor(member.id, "user", (await permsFor(member.id)).perms);
-  const mine = await logExpense({ amount: 5, category: "mine" }, userCtx);
-  console.log("user sees own rows:", (await listEntries({}, userCtx)).length);
-  console.log("admin sees all rows:", (await listEntries({}, adminCtx)).length);
-  await expectFail(() => editEntry({ id: i1.id, note: "hijack" }, userCtx), "cross-user edit");
-  await expectFail(() => deleteEntry({ id: i1.id }, userCtx), "cross-user delete");
-  await expectFail(() => listUsers(userCtx), "non-admin listUsers");
-  await expectFail(() => setRole({ id: member.id, role: "admin" }, userCtx), "non-admin setRole");
-  console.log("users (admin):", await listUsers(adminCtx));
-  console.log("promote:", await setRole({ id: member.id, role: "admin" }, adminCtx));
-  process.env.ALLOW_REGISTER = "false";
-  await expectFail(() => register({ username: "zed", password: "password123" }), "closed registration");
-  await deleteEntry({ id: mine.id }, userCtx);
+  const ownerToken = await createToken(owner.id, { name: "all", scopes: [...SCOPES] });
+  const readToken = await createToken(sam.id, { name: "ro", scopes: ["entries:read"] });
+  console.log("token prefix:", ownerToken.token.slice(0, 10));
+  const ownerCtx = await authForToken(ownerToken.token);
+  const roCtx = await authForToken(readToken.token);
+  const mine = await logExpense({ amount: 5, category: "mine" }, ownerCtx);
+  await expectFail(() => logExpense({ amount: 1, category: "x" }, roCtx), "read-only create");
+  await expectFail(() => deleteEntry({ id: mine.id }, roCtx), "read-only delete");
+  console.log("read-only list:", (await listEntries({}, roCtx)).length, "row(s)");
+  console.log("sam (no rows) sees:", (await listEntries({}, ctxFor(sam.id, ["entries:read"]))).length);
+  await expectFail(() => editEntry({ id: mine.id, note: "hijack" }, roCtx), "cross-user edit");
+  await revokeToken(sam.id, readToken.id);
+  await expectFail(() => authForToken(readToken.token), "revoked token");
+  await deleteEntry({ id: mine.id }, ownerCtx);
 
   await closeDb();
   console.log("SMOKE OK");

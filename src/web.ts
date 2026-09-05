@@ -11,14 +11,15 @@ import { ZodError } from "zod";
 import { createServer } from "./server.js";
 import {
   authenticate,
+  authForToken,
+  createToken,
   ctxFor,
-  listUsers,
+  listTokens,
   LoginSchema,
-  permsFor,
   register,
   RegisterSchema,
-  setRole,
-  SetRoleSchema,
+  revokeToken,
+  SCOPES,
   SYS_CTX,
   type AuthCtx,
 } from "./tools/users.js";
@@ -44,13 +45,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
-// Auth: users table + password login -> JWT ({sub: userId}).
+// Auth: users table. Two credential kinds, both Bearer:
+// - UI session: JWT {sub: userId} from /api/auth/login (full entry scopes)
+// - API tokens: opaque, user-created with chosen scopes, hashed at rest
 // Fresh DB (no users yet) = open, so the first account can register.
-// Otherwise every /api (except health/auth) and /mcp call needs a JWT,
-// resolved to a live AuthCtx (role + permissions) per request.
-const JWT_EXPIRY = "365d";
+const JWT_EXPIRY = "30d";
 
-function mintToken(userId: number): string {
+function mintSession(userId: number): string {
   return jwt.sign(
     { sub: userId },
     process.env.RAFIQ_JWT_SECRET as string,
@@ -58,17 +59,24 @@ function mintToken(userId: number): string {
   );
 }
 
+const ALL_SCOPES = [...SCOPES];
+
 async function resolveAuth(req: Request): Promise<AuthCtx> {
   const db = (await import("./db/client.js")).getDb();
   const [{ count }] = await db("users").count({ count: "id" });
   if (Number(count) === 0) return SYS_CTX;
-  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const bearer = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (!bearer) throw Object.assign(new Error("unauthorized"), { status: 401 });
   try {
-    const payload = jwt.verify(token, process.env.RAFIQ_JWT_SECRET as string) as unknown as {
+    return await authForToken(bearer);
+  } catch {
+    // fall through to session JWT
+  }
+  try {
+    const payload = jwt.verify(bearer, process.env.RAFIQ_JWT_SECRET as string) as unknown as {
       sub: number;
     };
-    const { role, perms } = await permsFor(Number(payload.sub));
-    return ctxFor(Number(payload.sub), role, perms);
+    return ctxFor(Number(payload.sub), ALL_SCOPES);
   } catch {
     throw Object.assign(new Error("unauthorized"), { status: 401 });
   }
@@ -97,25 +105,27 @@ app.use("/api", (req, res, next) => {
 app.post("/api/auth/register", (req: Request, res: Response) =>
   send(res, async () => {
     const user = await register(req.body);
-    return { token: mintToken(user.id), user };
+    return { token: mintSession(user.id), user };
   }),
 );
 
 app.post("/api/auth/login", (req: Request, res: Response) =>
   send(res, async () => {
     const user = await authenticate(req.body);
-    return { token: mintToken(user.id), user };
+    return { token: mintSession(user.id), user };
   }),
 );
 
-app.get("/api/users", (req: Request, res: Response) =>
-  send(res, () => listUsers(authOf(req))),
+app.get("/api/tokens", (req: Request, res: Response) =>
+  send(res, async () => listTokens(authOf(req).userId as number)),
 );
 
-app.patch("/api/users/:id", (req: Request, res: Response) =>
-  send(res, () =>
-    setRole({ id: Number(req.params.id), role: req.body?.role }, authOf(req)),
-  ),
+app.post("/api/tokens", (req: Request, res: Response) =>
+  send(res, async () => createToken(authOf(req).userId as number, req.body)),
+);
+
+app.delete("/api/tokens/:id", (req: Request, res: Response) =>
+  send(res, async () => revokeToken(authOf(req).userId as number, Number(req.params.id))),
 );
 
 // Remote MCP (Streamable HTTP, stateless) — same tools, acting as the caller.

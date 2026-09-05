@@ -37,8 +37,21 @@ export function getToken(): string | null {
 export interface AuthUser {
   id: number;
   username: string;
-  role: string;
 }
+
+export interface TokenInfo {
+  id: number;
+  name: string;
+  scopes: string[];
+  created_at: string;
+}
+
+export const ALL_SCOPES = [
+  "entries:create",
+  "entries:read",
+  "entries:update",
+  "entries:delete",
+];
 
 export function getUser(): AuthUser | null {
   try {
@@ -91,12 +104,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
-  users: () => req<AuthUser[]>(`/api/users`),
-  setRole: (id: number, role: string) =>
-    req<AuthUser>(`/api/users/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ role }),
+  tokens: () => req<TokenInfo[]>(`/api/tokens`),
+  createToken: (name: string, scopes: string[]) =>
+    req<TokenInfo & { token: string }>(`/api/tokens`, {
+      method: "POST",
+      body: JSON.stringify({ name, scopes }),
     }),
+  revokeToken: (id: number) =>
+    req<{ revoked: boolean }>(`/api/tokens/${id}`, { method: "DELETE" }),
   summary: (period: Period, category?: string) =>
     req<Summary>(
       `/api/summary?period=${period}${category ? `&category=${encodeURIComponent(category)}` : ""}`,

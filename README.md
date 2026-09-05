@@ -75,19 +75,20 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
 Same Postgres, two front doors: public web UI and remote MCP over HTTPS.
 No DB port is ever opened — both go through the app.
 
-## Auth + RBAC
+## Auth: accounts + scoped tokens (no roles)
 
-Accounts live in the DB (`users`, bcrypt hashes — no plaintext passwords).
-`POST /api/auth/register` (open unless `ALLOW_REGISTER=false`) and
-`POST /api/auth/login` return a signed JWT (`RAFIQ_JWT_SECRET`, 1y expiry).
-The first registrant becomes **admin** and inherits legacy ownerless rows.
+Everyone is equal. Accounts live in the DB (`users`, bcrypt hashes).
+Registration is always open; the first registrant inherits legacy
+ownerless rows. Every row belongs to the user who created it.
 
-Roles: **admin** (everything, incl. `users:manage`) and **user**
-(`entries:create/read/update/delete` on their own rows only).
-Every tool and endpoint executes as the caller: non-admins get 404 on
-rows they don't own and 403 on admin endpoints. Your JWT *is* your MCP
-credential — same bearer header, per-user scoping (`GET /api/users`,
-`PATCH /api/users/:id` for role changes).
+- `POST /api/auth/register`, `POST /api/auth/login` → session JWT
+  (`RAFIQ_JWT_SECRET`, 30d) for the UI.
+- `GET/POST /api/tokens`, `DELETE /api/tokens/:id` → mint as many tokens
+  as you want, each with the scopes **you** pick (`entries:create/read/
+  update/delete`). Shown once (`rafiq_…`, sha256 at rest), revocable.
+- Every tool and endpoint executes as the caller: a token without
+  `entries:delete` gets 403 on deletes; rows are scoped per user.
+  Your token *is* your MCP credential (same bearer header).
 
 On the VPS (pm2 + system Postgres + nginx):
 
