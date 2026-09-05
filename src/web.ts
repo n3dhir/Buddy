@@ -4,10 +4,11 @@ import express, {
   type Request,
   type Response,
 } from "express";
+import jwt from "jsonwebtoken";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { createServer } from "./server.js";
 import {
   CategoryBreakdownSchema,
@@ -29,26 +30,60 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
-// Bearer auth for /mcp and /api (except /api/health).
-// RAFIQ_API_TOKEN unset = open (local dev) with a warning; set it on the VPS.
-function requireToken(req: Request, res: Response, next: NextFunction) {
-  const expected = process.env.RAFIQ_API_TOKEN;
-  if (!expected) {
-    console.warn("RAFIQ_API_TOKEN unset — API/MCP open. Set it in production.");
+// Password login -> JWT. Single user: one password (RAFIQ_PASSWORD),
+// one signing secret (RAFIQ_JWT_SECRET), tokens valid 1 year.
+// Both unset = open (local dev) with a warning; set them in production.
+const JWT_EXPIRY = "365d";
+
+function authConfigured(): boolean {
+  return Boolean(process.env.RAFIQ_PASSWORD && process.env.RAFIQ_JWT_SECRET);
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!authConfigured()) {
+    console.warn("RAFIQ_PASSWORD/JWT_SECRET unset — API/MCP open. Set them in production.");
     return next();
   }
-  const got = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const a = Buffer.from(got);
+  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  try {
+    jwt.verify(token, process.env.RAFIQ_JWT_SECRET as string);
+    next();
+  } catch {
+    res.status(401).json({ error: "unauthorized" });
+  }
+}
+
+function checkPassword(password: unknown): boolean {
+  const expected = process.env.RAFIQ_PASSWORD ?? "";
+  if (!expected || typeof password !== "string") return false;
+  const a = Buffer.from(password);
   const b = Buffer.from(expected);
-  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
-  res.status(401).json({ error: "unauthorized" });
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api", (req, res, next) => {
-  if (req.path === "/health") return next();
-  requireToken(req, res, next);
+  if (req.path === "/health" || req.path === "/login") return next();
+  requireAuth(req, res, next);
 });
+
+app.post("/api/login", (req: Request, res: Response) =>
+  send(res, async () => {
+    if (!authConfigured()) return { token: null, open: true };
+    const { password } = z.object({ password: z.string() }).parse(req.body);
+    if (!checkPassword(password)) {
+      const e = new Error("invalid password") as Error & { status?: number };
+      e.status = 401;
+      throw e;
+    }
+    const token = jwt.sign(
+      { sub: "rafiq" },
+      process.env.RAFIQ_JWT_SECRET as string,
+      { expiresIn: JWT_EXPIRY },
+    );
+    return { token };
+  }),
+);
 
 // Remote MCP (Streamable HTTP, stateless) — same tools as the stdio server.
 async function handleMcp(req: Request, res: Response) {
@@ -64,17 +99,23 @@ async function handleMcp(req: Request, res: Response) {
     if (!res.headersSent) res.status(500).json({ error: "mcp error" });
   }
 }
-app.post("/mcp", requireToken, handleMcp);
-app.get("/mcp", requireToken, handleMcp);
-app.delete("/mcp", requireToken, handleMcp);
+app.post("/mcp", requireAuth, handleMcp);
+app.get("/mcp", requireAuth, handleMcp);
+app.delete("/mcp", requireAuth, handleMcp);
 
 function send(res: Response, fn: () => Promise<unknown>) {
   // Promise.resolve().then() so sync Zod throws become rejections too.
   Promise.resolve().then(fn).then(
     (data) => res.json(data),
     (e: unknown) => {
+      const status =
+        e instanceof Error
+          ? (e as unknown as { status?: unknown }).status
+          : undefined;
       if (e instanceof ZodError) {
         res.status(400).json({ error: "invalid input", issues: e.issues });
+      } else if (typeof status === "number") {
+        res.status(status).json({ error: (e as Error).message });
       } else if (e instanceof Error && /not found/i.test(e.message)) {
         res.status(404).json({ error: e.message });
       } else if (e instanceof Error && /no fields to update/i.test(e.message)) {

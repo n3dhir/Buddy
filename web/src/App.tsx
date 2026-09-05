@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getToken, setToken, type Breakdown, type Entry, type Period, type Summary } from "./api";
+import { api, setToken, type Breakdown, type Entry, type Period, type Summary } from "./api";
 import logoUrl from "./assets/logo.svg";
 
 const input =
@@ -400,12 +400,20 @@ function EditDialog({ entry, onClose, onDone }: { entry: Entry; onClose: () => v
   );
 }
 function TokenGate({ onDone }: { onDone: () => void }) {
-  const [token, setT] = useState(getToken() ?? "");
+  const [password, setP] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
 
-  function submit(ev: React.FormEvent) {
+  async function submit(ev: React.FormEvent) {
     ev.preventDefault();
-    setToken(token.trim() || null);
-    onDone();
+    try {
+      setMsg(null);
+      const { token } = await api.login(password);
+      setToken(token);
+      setP("");
+      onDone();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "login failed");
+    }
   }
 
   return (
@@ -413,17 +421,18 @@ function TokenGate({ onDone }: { onDone: () => void }) {
       <form onSubmit={submit} className={`${card} w-full max-w-sm p-6`}>
         <p className={eyebrow}>Rafiq is locked</p>
         <p className="mt-2 text-sm text-ink-subtle">
-          Enter the API token (RAFIQ_API_TOKEN from the server .env).
+          Enter your password to continue.
         </p>
         <input
-          className={`${input} mt-3 font-mono`}
+          className={`${input} mt-3`}
           type="password"
-          placeholder="API token"
-          value={token}
-          onChange={(e) => setT(e.target.value)}
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setP(e.target.value)}
           required
           autoFocus
         />
+        {msg && <p className="mt-2 text-sm text-red-300">{msg}</p>}
         <button type="submit" className={`${btnPrimary} mt-3 w-full`}>
           Unlock
         </button>

@@ -73,27 +73,32 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
 ## Deploy (VPS + remote MCP)
 
 Same Postgres, two front doors: public web UI and remote MCP over HTTPS.
-No DB port is ever opened — both go through the app. Auth is a single
-bearer token (`RAFIQ_API_TOKEN`) guarding `/api/*` (except `/api/health`)
-and `/mcp`. The UI asks for it once and stores it in localStorage.
+No DB port is ever opened — both go through the app. Auth is password
+login (`RAFIQ_PASSWORD`) issuing a signed JWT (`RAFIQ_JWT_SECRET`) that
+guards `/api/*` (except `/api/health` and `/api/login`) and `/mcp`.
+The UI asks for the password once; MCP clients send the JWT as a bearer
+token (fetch one via `POST /api/login`).
 
 On the VPS (pm2 + system Postgres + nginx):
 
 ```bash
 git clone <repo> && cd rafiq
 npm install && npm run build --prefix web
-cp .env.example .env   # DATABASE_URL (local PG), PORT=3000, RAFIQ_API_TOKEN=$(openssl rand -hex 32)
+cp .env.example .env   # DATABASE_URL (local PG), PORT=3000
+                       # RAFIQ_PASSWORD=<pick one>, RAFIQ_JWT_SECRET=$(openssl rand -hex 32)
 npm run migrate
 npm run build
-pm2 start ecosystem.config.cjs && pm2 save
-# nginx: deploy/nginx.conf.example → sites-available, certbot for TLS
+pm2 start dist/web.js --name rafiq-web && pm2 save
+# reverse-proxy + TLS in front (nginx/Caddy), forwarding to :3000
 ```
 
-On localhost, point the MCP client at the server (Claude Code shown):
+On localhost, point the MCP client at the server (Claude Code shown).
+Get a JWT first: `curl -s -X POST https://rafiq.example.com/api/login
+-H 'Content-Type: application/json' -d '{"password":"..."}'`, then:
 
 ```bash
 claude mcp add --transport http rafiq https://rafiq.example.com/mcp \
-  --header "Authorization: Bearer <RAFIQ_API_TOKEN>"
+  --header "Authorization: Bearer <JWT>"
 ```
 
 MCP endpoint notes: Streamable HTTP, stateless (one POST per request —

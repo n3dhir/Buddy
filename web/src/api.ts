@@ -60,6 +60,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  login: (password: string) =>
+    req<{ token: string | null }>(`/api/login`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
   summary: (period: Period, category?: string) =>
     req<Summary>(
       `/api/summary?period=${period}${category ? `&category=${encodeURIComponent(category)}` : ""}`,
