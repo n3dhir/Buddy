@@ -1,50 +1,56 @@
-export type Period = "week" | "month" | "year";
+// Africa/Tunis — never a fixed offset: stays correct even if DST rules change.
+// (Europe/Paris looks the same in winter but is UTC+2 in summer — wrong zone.)
+const TZ = "Africa/Tunis";
+const dateFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const dtFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
 
-export interface TransactionRow {
-  id: number;
-  amount: number;
-  currency: string;
-  category: string;
-  note: string | null;
-  payment_method: string | null;
-  date: string | Date;
-  is_income: boolean | number;
-  created_at: string | Date;
-  updated_at: string | Date;
-}
+export const toTunisDate = (d) => dateFmt.format(d);
 
-// Tunisia is UTC+1 year-round (no DST).
-const shift = (d: Date) => new Date(d.getTime() + 3_600_000);
-
-export const toTunisDate = (d: Date) => shift(d).toISOString().slice(0, 10);
-
-export const toTunisDateTime = (d: Date) =>
-  shift(d).toISOString().slice(0, 19).replace("T", " ");
+export const toTunisDateTime = (d) => {
+  const p: any = {};
+  for (const { type, value } of dtFmt.formatToParts(d)) p[type] = value;
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+};
 
 export const todayISO = () => toTunisDate(new Date());
 
 export const nowTunisDateTime = () => toTunisDateTime(new Date());
 
-export const isValidDate = (s: string) =>
+export const isValidDate = (s) =>
   /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 
-export const normCat = (s: string) => s.trim().toLowerCase();
+export const normCat = (s) => s.trim().toLowerCase();
 
-export function resolvePeriod(period: Period) {
-  const now = shift(new Date());
-  const to = now.toISOString().slice(0, 10);
-  if (period === "week")
-    return {
-      from: new Date(now.getTime() - 6 * 86_400_000).toISOString().slice(0, 10),
-      to,
-    };
+export function resolvePeriod(period) {
+  const to = todayISO();
+  if (period === "week") {
+    const [y, m, d] = to.split("-").map(Number);
+    const from = new Date(Date.UTC(y, m - 1, d) - 6 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    return { from, to };
+  }
   if (period === "month") return { from: `${to.slice(0, 7)}-01`, to };
   return { from: `${to.slice(0, 4)}-01-01`, to };
 }
 
-export function normalizeRow(row: TransactionRow) {
-  const stamp = (v: string | Date) =>
-    v instanceof Date ? toTunisDateTime(v) : v;
+// Drivers return DB-native types (numbers as strings, Dates, 0/1).
+// This coerces rows into clean JSON types.
+export function normalizeRow(row) {
   return {
     ...row,
     amount: Number(row.amount),
@@ -55,6 +61,10 @@ export function normalizeRow(row: TransactionRow) {
   };
 }
 
-export function round2(n: number): number {
+function stamp(v) {
+  return v instanceof Date ? toTunisDateTime(v) : v;
+}
+
+export function round2(n) {
   return Math.round(n * 100) / 100;
 }

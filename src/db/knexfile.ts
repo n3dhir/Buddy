@@ -1,9 +1,13 @@
 import "dotenv/config";
+import dotenv from "dotenv";
 import type { Knex } from "knex";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Explicit path: the knex CLI changes cwd to this directory,
+// so a bare dotenv/config would look for .env in the wrong place.
+dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 
 function sqliteConfig(ext: string): Knex.Config {
   const dbPath =

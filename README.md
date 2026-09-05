@@ -56,7 +56,7 @@ Errors: 400 invalid input (zod issues), 404 unknown id.
 Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
 = fixed UTC+1). `week` = last 7 days, `month`/`year` = calendar.
 
-## Claude Desktop / Code
+## Claude Desktop / Code (local stdio)
 
 ```json
 {
@@ -69,6 +69,52 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
   }
 }
 ```
+
+## Deploy (VPS + remote MCP)
+
+Same Postgres, two front doors: public web UI and remote MCP over HTTPS.
+No DB port is ever opened — both go through the app.
+
+## Auth: accounts + scoped tokens (no roles)
+
+Everyone is equal. Accounts live in the DB (`users`, bcrypt hashes).
+Registration is always open; the first registrant inherits legacy
+ownerless rows. Every row belongs to the user who created it.
+
+- `POST /api/auth/register`, `POST /api/auth/login` → session JWT
+  (`RAFIQ_JWT_SECRET`, 30d) for the UI.
+- `GET/POST /api/tokens`, `DELETE /api/tokens/:id` → mint as many tokens
+  as you want, each with the scopes **you** pick (`entries:create/read/
+  update/delete`). Shown once (`rafiq_…`, sha256 at rest), revocable.
+- Every tool and endpoint executes as the caller: a token without
+  `entries:delete` gets 403 on deletes; rows are scoped per user.
+  Your token *is* your MCP credential (same bearer header).
+
+On the VPS (pm2 + system Postgres + nginx):
+
+```bash
+git clone <repo> && cd rafiq
+npm install && npm run build --prefix web
+cp .env.example .env   # DATABASE_URL (local PG), PORT=3000
+                       # RAFIQ_PASSWORD=<pick one>, RAFIQ_JWT_SECRET=$(openssl rand -hex 32)
+npm run migrate
+npm run build
+pm2 start dist/web.js --name rafiq-web && pm2 save
+# reverse-proxy + TLS in front (nginx/Caddy), forwarding to :3000
+```
+
+On localhost, point the MCP client at the server (Claude Code shown).
+Get a JWT first: `curl -s -X POST https://rafiq.example.com/api/login
+-H 'Content-Type: application/json' -d '{"password":"..."}'`, then:
+
+```bash
+claude mcp add --transport http rafiq https://rafiq.example.com/mcp \
+  --header "Authorization: Bearer <JWT>"
+```
+
+MCP endpoint notes: Streamable HTTP, stateless (one POST per request —
+initialize, then call tools normally). `/mcp` GET/DELETE return 405, as
+expected for stateless servers.
 
 ## Layout
 

@@ -8,8 +8,15 @@ import {
   resolvePeriod,
   round2,
   todayISO,
-  type TransactionRow,
 } from "./utils.js";
+import { need, PERMS, sysCtx } from "./users.js";
+
+// Rows are scoped to the caller: a token sees only its owner's rows.
+// No ctx (local stdio, tests) = full access.
+function scope(q, ctx) {
+  if (ctx.userId !== null) q.andWhere({ user_id: ctx.userId });
+  return q;
+}
 
 // ---------- shared ----------
 
@@ -30,9 +37,8 @@ export const LogEntrySchema = z.object({
   currency: z.string().length(3).optional().describe("3-letter code, defaults to TND"),
 });
 
-async function insertEntry(
-  input: z.infer<typeof LogEntrySchema> & { is_income: boolean },
-) {
+async function insertEntry(input, ctx = sysCtx()) {
+  need(ctx, PERMS.create);
   const db = getDb();
   const date = input.date ?? todayISO();
   if (!isValidDate(date)) throw new Error(`Invalid date: ${date}`);
@@ -44,23 +50,22 @@ async function insertEntry(
     date,
     currency: (input.currency ?? "TND").toUpperCase(),
     is_income: input.is_income,
+    user_id: ctx.userId,
     created_at: nowTunisDateTime(),
     updated_at: nowTunisDateTime(),
   }).returning("id");
-  const rowId =
-    typeof inserted[0] === "object"
-      ? (inserted[0] as { id: number }).id
-      : (inserted[0] as number);
+  const first = inserted[0];
+  const rowId = typeof first === "object" ? first.id : first;
   const row = await db("transactions").where({ id: rowId }).first();
-  return normalizeRow(row as TransactionRow);
+  return normalizeRow(row);
 }
 
-export async function logExpense(input: z.infer<typeof LogEntrySchema>) {
-  return insertEntry({ ...input, is_income: false });
+export async function logExpense(input, ctx = sysCtx()) {
+  return insertEntry({ ...input, is_income: false }, ctx);
 }
 
-export async function logIncome(input: z.infer<typeof LogEntrySchema>) {
-  return insertEntry({ ...input, is_income: true });
+export async function logIncome(input, ctx = sysCtx()) {
+  return insertEntry({ ...input, is_income: true }, ctx);
 }
 
 // ---------- get_summary ----------
@@ -70,12 +75,13 @@ export const GetSummarySchema = z.object({
   category: z.string().optional().describe("Optional category filter"),
 });
 
-export async function getSummary(input: z.infer<typeof GetSummarySchema>) {
+export async function getSummary(input, ctx = sysCtx()) {
+  need(ctx, PERMS.read);
   const { from, to } = resolvePeriod(input.period);
   const db = getDb();
-  const q = db("transactions").whereBetween("date", [from, to]);
+  const q = scope(db("transactions").whereBetween("date", [from, to]), ctx);
   if (input.category) q.andWhere({ category: normCat(input.category) });
-  const rows = (await q.select()) as TransactionRow[];
+  const rows = await q.select();
   let income = 0;
   let spent = 0;
   for (const r of rows) {
@@ -102,14 +108,14 @@ export const CategoryBreakdownSchema = z.object({
   period: PeriodSchema.describe("week = last 7 days, month/year = calendar"),
 });
 
-export async function getCategoryBreakdown(
-  input: z.infer<typeof CategoryBreakdownSchema>,
-) {
+export async function getCategoryBreakdown(input, ctx = sysCtx()) {
+  need(ctx, PERMS.read);
   const { from, to } = resolvePeriod(input.period);
   const db = getDb();
-  const rows = await db("transactions")
-    .whereBetween("date", [from, to])
-    .andWhere({ is_income: false })
+  const rows = await scope(
+    db("transactions").whereBetween("date", [from, to]).andWhere({ is_income: false }),
+    ctx,
+  )
     .select("category")
     .sum({ total: "amount" })
     .count({ count: "id" })
@@ -119,10 +125,10 @@ export async function getCategoryBreakdown(
     period: input.period,
     from,
     to,
-    breakdown: rows.map((r: Record<string, unknown>) => ({
+    breakdown: rows.map((r) => ({
       category: String(r.category),
-      total: Number(r.total as number | string),
-      count: Number(r.count as number | string),
+      total: Number(r.total),
+      count: Number(r.count),
     })),
   };
 }
@@ -138,16 +144,17 @@ export const ListEntriesSchema = z.object({
   limit: z.number().int().positive().max(200).optional().describe("Max rows, default 50"),
 });
 
-export async function listEntries(input: z.infer<typeof ListEntriesSchema>) {
+export async function listEntries(input, ctx = sysCtx()) {
+  need(ctx, PERMS.read);
   const db = getDb();
-  const q = db("transactions").orderBy("date", "desc").orderBy("id", "desc");
+  const q = scope(db("transactions").orderBy("date", "desc").orderBy("id", "desc"), ctx);
   if (input.date_from) q.andWhere("date", ">=", input.date_from);
   if (input.date_to) q.andWhere("date", "<=", input.date_to);
   if (input.category) q.andWhere({ category: normCat(input.category) });
   if (input.payment_method) q.andWhere({ payment_method: input.payment_method });
   if (input.is_income !== undefined) q.andWhere({ is_income: input.is_income });
   q.limit(input.limit ?? 50);
-  const rows = (await q.select()) as TransactionRow[];
+  const rows = await q.select();
   return rows.map(normalizeRow);
 }
 
@@ -164,11 +171,12 @@ export const EditEntrySchema = z.object({
   is_income: z.boolean().optional(),
 });
 
-export async function editEntry(input: z.infer<typeof EditEntrySchema>) {
+export async function editEntry(input, ctx = sysCtx()) {
+  need(ctx, PERMS.update);
   const db = getDb();
-  const existing = await db("transactions").where({ id: input.id }).first();
+  const existing = await scope(db("transactions").where({ id: input.id }), ctx).first();
   if (!existing) throw new Error(`Entry #${input.id} not found`);
-  const patch: Record<string, unknown> = {};
+  const patch: any = {};
   if (input.amount !== undefined) patch.amount = round2(input.amount);
   if (input.category !== undefined) patch.category = normCat(input.category);
   if (input.note !== undefined) patch.note = input.note;
@@ -183,7 +191,7 @@ export async function editEntry(input: z.infer<typeof EditEntrySchema>) {
   patch.updated_at = nowTunisDateTime();
   await db("transactions").where({ id: input.id }).update(patch);
   const row = await db("transactions").where({ id: input.id }).first();
-  return normalizeRow(row as TransactionRow);
+  return normalizeRow(row);
 }
 
 // ---------- delete_entry ----------
@@ -192,11 +200,10 @@ export const DeleteEntrySchema = z.object({
   id: z.number().int().positive().describe("Entry id"),
 });
 
-export async function deleteEntry(
-  input: z.infer<typeof DeleteEntrySchema>,
-) {
+export async function deleteEntry(input, ctx = sysCtx()) {
+  need(ctx, PERMS.delete);
   const db = getDb();
-  const deleted = await db("transactions").where({ id: input.id }).del();
+  const deleted = await scope(db("transactions").where({ id: input.id }), ctx).del();
   if (!deleted) throw new Error(`Entry #${input.id} not found`);
   return { deleted: true, id: input.id };
 }

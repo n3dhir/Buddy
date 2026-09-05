@@ -1,9 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import knex, { type Knex } from "knex";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Explicit path: never depend on the caller's working directory.
+dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 
 function buildConfig(): Knex.Config {
   if (process.env.DB_CLIENT === "sqlite") {
