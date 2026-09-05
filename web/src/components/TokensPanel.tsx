@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ALL_SCOPES, type TokenInfo } from "../api";
+import { api, type TokenInfo } from "../api";
+import { btnGhost, card, eyebrow } from "../ui";
+import { ChevronIcon, CopyIcon } from "./icons";
 import EmptyState from "./EmptyState";
-import { toast } from "./Toaster";
-import { btnGhost, btnPrimary, card, eyebrow, input } from "../ui";
+import TokenDialog from "./TokenDialog";
 
 export default function TokensPanel() {
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState<string[]>([...ALL_SCOPES]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editScopes, setEditScopes] = useState<string[]>([]);
+  const [selected, setSelected] = useState<TokenInfo | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const loadTokens = useCallback(() => {
     api
@@ -24,39 +23,17 @@ export default function TokensPanel() {
     loadTokens();
   }, [loadTokens]);
 
-  function toggleScope(s: string) {
-    setScopes(scopes.includes(s) ? scopes.filter((x) => x !== s) : [...scopes, s]);
-  }
-
-  async function saveScopes(id: number) {
-    try {
-      setMsg(null);
-      await api.updateToken(id, { scopes: editScopes });
-      setEditingId(null);
-      toast("Token scopes updated");
-      loadTokens();
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "save failed");
-    }
-  }
-
-  async function create(ev: React.FormEvent) {
-    ev.preventDefault();
-    try {
-      setMsg(null);
-      const t = await api.createToken(name, scopes);
-      setFresh(t.token);
-      setName("");
-      toast("Token created — copy it now");
-      loadTokens();
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "create failed");
-    }
-  }
-
   return (
-    <section className={`${card} mt-4 p-6`}>
-      <p className={eyebrow}>API tokens · pick scopes per token</p>
+    <section className={`${card} mt-4 p-5 sm:p-6`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className={eyebrow}>API tokens · pick scopes per token</p>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="rounded-full border border-hairline px-3 py-1.5 text-xs text-ink-subtle hover:text-ink"
+        >
+          + New
+        </button>
+      </div>
       {msg && <p className="mt-2 text-sm text-red-300">{msg}</p>}
       {fresh && (
         <div className="mt-3 rounded-lg border border-brand/50 bg-canvas p-3">
@@ -64,120 +41,59 @@ export default function TokensPanel() {
           <p className="mt-1 break-all font-mono text-sm text-brand">{fresh}</p>
           <button
             onClick={() => void navigator.clipboard.writeText(fresh).then(() => setFresh(null))}
-            className={`${btnGhost} mt-2`}
+            className={`${btnGhost} mt-2 gap-1.5`}
           >
-            Copy & dismiss
+            <CopyIcon /> Copy & dismiss
           </button>
         </div>
       )}
-      <form onSubmit={create} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          className={input}
-          placeholder="Token name (claude-code…)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Token name"
-        />
-        <button type="submit" className={btnPrimary}>
-          Create
-        </button>
-      </form>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {ALL_SCOPES.map((s) => (
-          <label
-            key={s}
-            className={`flex min-h-[40px] cursor-pointer items-center gap-2 rounded-full border px-3 text-xs ${
-              scopes.includes(s) ? "border-brand text-ink" : "border-hairline text-ink-subtle"
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="accent-[#5e6ad2]"
-              checked={scopes.includes(s)}
-              onChange={() => toggleScope(s)}
-            />
-            {s.replace("entries:", "")}
-          </label>
-        ))}
-      </div>
-      <ul className="mt-2 divide-y divide-hairline">
+      <ul className="mt-1 divide-y divide-hairline">
         {tokens.map((t) => (
-          <li key={t.id} className="py-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm text-ink">
+          <li key={t.id}>
+            <button
+              onClick={() => setSelected(t)}
+              className="group flex w-full items-center gap-3 py-3.5 text-left"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 font-mono text-xs text-brand">
+                {t.name ? t.name.slice(0, 2).toUpperCase() : `#${t.id}`}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] text-ink">
                   {t.name || "(unnamed)"}{" "}
                   <span className="font-mono text-xs text-ink-tertiary">#{t.id}</span>
-                </p>
-                <p className="truncate font-mono text-xs text-ink-subtle">
+                </span>
+                <span className="mt-0.5 block truncate font-mono text-xs text-ink-subtle">
                   {t.scopes.map((s) => s.replace("entries:", "")).join(" · ")}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <button
-                  onClick={() => {
-                    setEditingId(editingId === t.id ? null : t.id);
-                    setEditScopes(t.scopes);
-                  }}
-                  className={btnGhost}
-                  aria-label={`Edit scopes for token ${t.id}`}
-                >
-                  {editingId === t.id ? "Close" : "Scopes"}
-                </button>
-              <button
-                onClick={() =>
-                  api
-                    .revokeToken(t.id)
-                    .then(() => {
-                      toast("Token revoked");
-                      loadTokens();
-                    })
-                    .catch((err: Error) => setMsg(err.message))
-                }
-                  className={btnGhost}
-                  aria-label={`Revoke token ${t.id}`}
-                >
-                  Revoke
-                </button>
-              </div>
-            </div>
-            {editingId === t.id && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-canvas p-3">
-                {ALL_SCOPES.map((s) => (
-                  <label
-                    key={s}
-                    className={`flex min-h-[36px] cursor-pointer items-center gap-2 rounded-full border px-3 text-xs ${
-                      editScopes.includes(s) ? "border-brand text-ink" : "border-hairline text-ink-subtle"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="accent-[#5e6ad2]"
-                      checked={editScopes.includes(s)}
-                      onChange={() =>
-                        setEditScopes(
-                          editScopes.includes(s)
-                            ? editScopes.filter((x) => x !== s)
-                            : [...editScopes, s],
-                        )
-                      }
-                    />
-                    {s.replace("entries:", "")}
-                  </label>
-                ))}
-                <button onClick={() => void saveScopes(t.id)} className={btnPrimary}>
-                  Save
-                </button>
-              </div>
-            )}
+                </span>
+              </span>
+              <span className="shrink-0 text-ink-tertiary group-hover:text-ink">
+                <ChevronIcon />
+              </span>
+            </button>
           </li>
         ))}
         {tokens.length === 0 && (
           <div className="py-4">
-            <EmptyState title="No tokens yet" hint="Create one above to connect chat or scripts." />
+            <EmptyState title="No tokens yet" hint="Create one to connect chat or scripts." />
           </div>
         )}
       </ul>
+      {selected && (
+        <TokenDialog
+          key={selected.id}
+          token={selected}
+          onClose={() => setSelected(null)}
+          onChanged={loadTokens}
+        />
+      )}
+      {showCreate && (
+        <TokenDialog
+          token={null}
+          onClose={() => setShowCreate(false)}
+          onChanged={loadTokens}
+          onCreated={setFresh}
+        />
+      )}
     </section>
   );
 }

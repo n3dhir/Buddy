@@ -3,7 +3,7 @@ import { api } from "../api";
 import { toast } from "./Toaster";
 import { btnPrimary, card, eyebrow, input } from "../ui";
 
-export default function LogForm({ onDone }: { onDone: () => void }) {
+export default function LogForm({ onDone, plain }: { onDone: () => void; plain?: boolean }) {
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
@@ -36,7 +36,7 @@ export default function LogForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className={`${card} order-1 p-6 lg:order-2 lg:sticky lg:top-[72px]`}>
+    <form onSubmit={submit} className={plain ? "" : `${card} order-1 p-6 lg:order-2 lg:sticky lg:top-[72px]`}>
       <p className={eyebrow}>Log entry</p>
       <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-hairline p-1">
         {(["expense", "income"] as const).map((k) => (

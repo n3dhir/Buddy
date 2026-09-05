@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { api, getToken, getUser, setSession, type AuthUser, type Breakdown, type Entry, type Period, type Summary } from "../api";
-import logoUrl from "../assets/logo.svg";
 import { btnGhost, card, eyebrow, greeting, money, periodTitle } from "../ui";
+import BottomBar from "../components/BottomBar";
+import ConfirmDialog from "../components/ConfirmDialog";
 import EditDialog from "../components/EditDialog";
 import EmptyState from "../components/EmptyState";
-import LogForm from "../components/LogForm";
+import EntryModal from "../components/EntryModal";
+import { PencilIcon, PlusIcon, RefreshIcon, TrashIcon } from "../components/icons";
 import DashboardSkeleton from "../components/Skeleton";
 import Stat from "../components/Stat";
 import Toaster, { toast } from "../components/Toaster";
-import TokensPanel from "../components/TokensPanel";
+import TopNav from "../components/TopNav";
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("month");
@@ -21,10 +23,38 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Entry | null>(null);
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
+  const [showForm, setShowForm] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Entry | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [cycle, setCycle] = useState(0);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  function logout() {
+    setSession(null, null);
+    setUser(null);
+    setConfirmLogout(false);
+    navigate("/login");
+  }
+
+  function removeEntry(id: number) {
+    void api
+      .remove(id)
+      .then(() => {
+        toast("Entry deleted");
+        setPendingDelete(null);
+        load();
+      })
+      .catch((err: Error) => {
+        setPendingDelete(null);
+        setError(err.message);
+      });
+  }
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       const [s, b, e] = await Promise.all([
         api.summary(period),
@@ -41,6 +71,8 @@ export default function Dashboard() {
         navigate("/login");
       } else setError(err instanceof Error ? err.message : "load failed");
     } finally {
+      setLoading(false);
+      setCycle((c) => c + 1);
       setReady(true);
     }
   }, [period]);
@@ -50,6 +82,10 @@ export default function Dashboard() {
       setReady(true);
       navigate("/login");
       return;
+    }
+    if ((location.state as { fresh?: boolean } | null)?.fresh) {
+      setShowForm(true);
+      navigate(location.pathname, { replace: true });
     }
     void load();
   }, [load, navigate]);
@@ -69,59 +105,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      {/* Top nav */}
-      <nav className="sticky top-0 z-10 border-b border-hairline bg-canvas/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <button onClick={() => navigate("/dashboard")} aria-label="Dashboard">
-              <img src={logoUrl} alt="Rafiq logo" className="h-7 w-7 rounded-lg" />
-            </button>
-            <span className="hidden text-sm font-medium min-[420px]:inline">Rafiq</span>
-            <span className="hidden rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted sm:inline">
-              Tunis · UTC+1
-            </span>
-          </div>
-          <div className="flex items-center gap-1 rounded-full border border-hairline bg-canvas p-1">
-            {(["week", "month", "year"] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={
-                  period === p
-                    ? "min-h-[32px] rounded-full bg-surface-2 px-3.5 text-sm font-medium text-ink"
-                    : "min-h-[32px] rounded-full px-3.5 text-sm text-ink-subtle hover:text-ink"
-                }
-              >
-                {p[0].toUpperCase() + p.slice(1)}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => void load()} className={btnGhost} title="Reload from server">
-            <span aria-hidden>↻</span>
-            <span className="ml-1.5 hidden md:inline">Refresh</span>
-          </button>
-          {user && (
-            <>
-              <span className="hidden rounded-full bg-surface-2 px-2.5 py-1 font-mono text-xs text-ink-muted sm:inline">
-                {user.username}
-              </span>
-              <button
-                onClick={() => {
-                  setSession(null, null);
-                  setUser(null);
-                  navigate("/login");
-                }}
-                className={btnGhost}
-                title="Log out"
-              >
-                ⎋
-              </button>
-            </>
-          )}
-        </div>
-      </nav>
+      <TopNav user={user} onLogout={() => setConfirmLogout(true)} />
 
-      <main className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
+      <main className="mx-auto max-w-6xl px-4 pb-24 sm:px-6 sm:pb-16">
         {/* Hero */}
         <header className="rise pt-10 sm:pt-14">
           <p className={eyebrow}>
@@ -149,9 +135,40 @@ export default function Dashboard() {
           </p>
         )}
 
+        {/* Controls */}
+        <div className="mt-8 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1 rounded-full border border-hairline bg-surface-1 p-1">
+            {(["week", "month", "year"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={
+                  period === p
+                    ? "min-h-[36px] rounded-full bg-surface-2 px-4 text-sm font-medium text-ink"
+                    : "min-h-[36px] rounded-full px-4 text-sm text-ink-subtle hover:text-ink"
+                }
+              >
+                {p[0].toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => void load()}
+            className={btnGhost}
+            title="Reload from server"
+            aria-label="Reload dashboard"
+          >
+            <span aria-hidden className={loading ? "inline-block animate-spin" : undefined}>
+              <RefreshIcon />
+            </span>
+            <span className="ml-1.5 hidden md:inline">Refresh</span>
+          </button>
+        </div>
+
         {/* Stats */}
         <section
-          className="rise mt-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
+          key={`stats-${cycle}`}
+          className="rise mt-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
           style={{ animationDelay: "60ms" }}
         >
           <Stat label="Spent" value={summary ? money(summary.total_spent) : "—"} suffix="TND" />
@@ -166,7 +183,7 @@ export default function Dashboard() {
         </section>
 
         {/* Breakdown */}
-        <section className={`${card} rise mt-3 p-6 sm:mt-4`} style={{ animationDelay: "120ms" }}>
+        <section key={`breakdown-${cycle}`} className={`${card} rise mt-3 p-6 sm:mt-4`} style={{ animationDelay: "120ms" }}>
           <div className="flex items-baseline justify-between gap-2">
             <p className={eyebrow}>Spending by category</p>
             <p className="font-mono text-xs text-ink-tertiary">
@@ -198,14 +215,11 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Entries + form */}
-        <section
-          className="rise mt-8 grid items-start gap-4 lg:grid-cols-[1fr_340px]"
-          style={{ animationDelay: "180ms" }}
-        >
-          <div className={`${card} order-2 p-6 lg:order-1`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className={eyebrow}>Entries</p>
+        {/* Entries */}
+        <section key={`entries-${cycle}`} className={`${card} rise mt-8 p-6`} style={{ animationDelay: "180ms" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className={eyebrow}>Entries</p>
+            <div className="flex items-center gap-2">
               <div className="flex gap-1 rounded-full border border-hairline p-1">
                 {(["all", "spending", "income"] as const).map((k) => (
                   <button
@@ -221,7 +235,11 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
+              <button onClick={() => setShowForm(true)} className={btnGhost}>
+                + New
+              </button>
             </div>
+          </div>
             <ul className="mt-2 divide-y divide-hairline">
               {visible.map((e) => (
                 <li key={e.id} className="flex items-center gap-3 py-4">
@@ -244,24 +262,17 @@ export default function Dashboard() {
                       {e.is_income ? "+" : "−"}
                       {money(e.amount)}
                     </span>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditing(e)} className={btnGhost} aria-label={`Edit entry ${e.id}`}>
-                        Edit
+                    <div className="flex gap-1 text-lg">
+                      <button onClick={() => setEditing(e)} className={btnGhost} aria-label={`Edit entry ${e.id}`} title="Edit">
+                        <PencilIcon />
                       </button>
                       <button
-                        onClick={() =>
-                          void api
-                            .remove(e.id)
-                            .then(() => {
-                              toast("Entry deleted");
-                              load();
-                            })
-                            .catch((err: Error) => setError(err.message))
-                        }
+                        onClick={() => setPendingDelete(e)}
                         className={btnGhost}
                         aria-label={`Delete entry ${e.id}`}
+                        title="Delete"
                       >
-                        Del
+                        <TrashIcon />
                       </button>
                     </div>
                   </div>
@@ -269,24 +280,49 @@ export default function Dashboard() {
               ))}
               {visible.length === 0 && (
                 <div className="py-4">
-                  <EmptyState title="No entries yet" hint="Use the log form to record your first one — or send it from chat." />
+                  <EmptyState title="No entries yet" hint="Tap + below — or send it from chat." />
                 </div>
               )}
             </ul>
-          </div>
-
-          <LogForm onDone={load} />
         </section>
-
-        {user && <TokensPanel />}
 
         <footer className="mt-12 border-t border-hairline pt-6 text-xs text-ink-tertiary">
           Rafiq · Tunis time (UTC+1) · refresh to sync changes made via chat
         </footer>
       </main>
 
+      <button
+        onClick={() => setShowForm(true)}
+        aria-label="Log new entry"
+        className="fixed bottom-6 right-6 z-10 hidden h-14 w-14 items-center justify-center rounded-full bg-brand text-xl text-white shadow-xl hover:bg-brand-hover sm:flex"
+      >
+        <PlusIcon />
+      </button>
+      <div className="sm:hidden">
+        <BottomBar onNew={() => setShowForm(true)} />
+      </div>
+
+      {showForm && <EntryModal onClose={() => setShowForm(false)} onDone={load} />}
       {editing && (
         <EditDialog entry={editing} onClose={() => setEditing(null)} onDone={load} />
+      )}
+      {confirmLogout && (
+        <ConfirmDialog
+          title="Log out?"
+          message="You'll need your password to log back in."
+          confirmLabel="Log out"
+          onClose={() => setConfirmLogout(false)}
+          onConfirm={logout}
+        />
+      )}
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this entry?"
+          message={`${pendingDelete.note || pendingDelete.category} · ${money(pendingDelete.amount)} TND — this cannot be undone.`}
+          confirmLabel="Delete"
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => removeEntry(pendingDelete.id)}
+        />
       )}
       <Toaster />
     </div>
