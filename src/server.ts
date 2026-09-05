@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SYS_CTX, type AuthCtx } from "./tools/users.js";
+import { sysCtx } from "./tools/users.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CategoryBreakdownSchema,
@@ -17,16 +17,16 @@ import {
   logIncome,
 } from "./tools/finance.js";
 
-function json(data: unknown) {
+function json(data) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
 }
 
-function err(e: unknown) {
+function err(e) {
   const message = e instanceof Error ? e.message : String(e);
-  return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true as const };
+  return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 
-export function createServer(auth: () => AuthCtx = () => SYS_CTX): McpServer {
+export function createServer(auth = () => sysCtx()) {
   const server = new McpServer({ name: "rafiq", version: "0.1.0" });
 
   server.registerTool(

@@ -1,8 +1,4 @@
-import express, {
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import express from "express";
 import jwt from "jsonwebtoken";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,16 +11,11 @@ import {
   createToken,
   ctxFor,
   listTokens,
-  LoginSchema,
   register,
-  RegisterSchema,
   revokeToken,
   SCOPES,
-  SYS_CTX,
-  type AuthCtx,
+  sysCtx,
 } from "./tools/users.js";
-
-type AuthedRequest = Request & { auth: AuthCtx };
 import {
   CategoryBreakdownSchema,
   DeleteEntrySchema,
@@ -49,52 +40,44 @@ app.use(express.json());
 // - UI session: JWT {sub: userId} from /api/auth/login (full entry scopes)
 // - API tokens: opaque, user-created with chosen scopes, hashed at rest
 // Fresh DB (no users yet) = open, so the first account can register.
-const JWT_EXPIRY = "30d";
-
-function mintSession(userId: number): string {
-  return jwt.sign(
-    { sub: userId },
-    process.env.RAFIQ_JWT_SECRET as string,
-    { expiresIn: JWT_EXPIRY },
-  );
+function mintSession(userId) {
+  return jwt.sign({ sub: userId }, process.env.RAFIQ_JWT_SECRET, { expiresIn: "30d" });
 }
 
-const ALL_SCOPES = [...SCOPES];
-
-async function resolveAuth(req: Request): Promise<AuthCtx> {
+async function resolveAuth(req) {
   const db = (await import("./db/client.js")).getDb();
   const [{ count }] = await db("users").count({ count: "id" });
-  if (Number(count) === 0) return SYS_CTX;
+  if (Number(count) === 0) return sysCtx();
   const bearer = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!bearer) throw Object.assign(new Error("unauthorized"), { status: 401 });
+  if (!bearer) fail("unauthorized", 401);
   try {
     return await authForToken(bearer);
   } catch {
     // fall through to session JWT
   }
   try {
-    const payload = jwt.verify(bearer, process.env.RAFIQ_JWT_SECRET as string) as unknown as {
-      sub: number;
-    };
-    return ctxFor(Number(payload.sub), ALL_SCOPES);
+    const payload: any = jwt.verify(bearer, process.env.RAFIQ_JWT_SECRET);
+    return ctxFor(Number(payload.sub), [...SCOPES]);
   } catch {
-    throw Object.assign(new Error("unauthorized"), { status: 401 });
+    fail("unauthorized", 401);
   }
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+function fail(msg, status) {
+  throw Object.assign(new Error(msg), { status });
+}
+
+function requireAuth(req, res, next) {
   resolveAuth(req).then(
     (auth) => {
-      (req as AuthedRequest).auth = auth;
+      (req as any).auth = auth;
       next();
     },
-    (e: unknown) => {
-      res.status(401).json({ error: e instanceof Error ? e.message : "unauthorized" });
-    },
+    (e) => res.status(401).json({ error: e.message ?? "unauthorized" }),
   );
 }
 
-const authOf = (req: Request): AuthCtx => (req as AuthedRequest).auth ?? SYS_CTX;
+const authOf = (req) => (req as any).auth ?? sysCtx();
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api", (req, res, next) => {
@@ -102,34 +85,34 @@ app.use("/api", (req, res, next) => {
   requireAuth(req, res, next);
 });
 
-app.post("/api/auth/register", (req: Request, res: Response) =>
+app.post("/api/auth/register", (req, res) =>
   send(res, async () => {
     const user = await register(req.body);
     return { token: mintSession(user.id), user };
   }),
 );
 
-app.post("/api/auth/login", (req: Request, res: Response) =>
+app.post("/api/auth/login", (req, res) =>
   send(res, async () => {
     const user = await authenticate(req.body);
     return { token: mintSession(user.id), user };
   }),
 );
 
-app.get("/api/tokens", (req: Request, res: Response) =>
-  send(res, async () => listTokens(authOf(req).userId as number)),
+app.get("/api/tokens", (req, res) =>
+  send(res, async () => listTokens(authOf(req).userId)),
 );
 
-app.post("/api/tokens", (req: Request, res: Response) =>
-  send(res, async () => createToken(authOf(req).userId as number, req.body)),
+app.post("/api/tokens", (req, res) =>
+  send(res, async () => createToken(authOf(req).userId, req.body)),
 );
 
-app.delete("/api/tokens/:id", (req: Request, res: Response) =>
-  send(res, async () => revokeToken(authOf(req).userId as number, Number(req.params.id))),
+app.delete("/api/tokens/:id", (req, res) =>
+  send(res, async () => revokeToken(authOf(req).userId, Number(req.params.id))),
 );
 
 // Remote MCP (Streamable HTTP, stateless) — same tools, acting as the caller.
-async function handleMcp(req: Request, res: Response) {
+async function handleMcp(req, res) {
   const server = createServer(() => authOf(req));
   try {
     const transport = new StreamableHTTPServerTransport({
@@ -146,19 +129,15 @@ app.post("/mcp", requireAuth, handleMcp);
 app.get("/mcp", requireAuth, handleMcp);
 app.delete("/mcp", requireAuth, handleMcp);
 
-function send(res: Response, fn: () => Promise<unknown>) {
+function send(res, fn) {
   // Promise.resolve().then() so sync Zod throws become rejections too.
   Promise.resolve().then(fn).then(
     (data) => res.json(data),
-    (e: unknown) => {
-      const status =
-        e instanceof Error
-          ? (e as unknown as { status?: unknown }).status
-          : undefined;
+    (e) => {
       if (e instanceof ZodError) {
         res.status(400).json({ error: "invalid input", issues: e.issues });
-      } else if (typeof status === "number") {
-        res.status(status).json({ error: (e as Error).message });
+      } else if (typeof e.status === "number") {
+        res.status(e.status).json({ error: e.message });
       } else if (e instanceof Error && /not found/i.test(e.message)) {
         res.status(404).json({ error: e.message });
       } else if (e instanceof Error && /no fields to update/i.test(e.message)) {
@@ -171,17 +150,15 @@ function send(res: Response, fn: () => Promise<unknown>) {
   );
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-app.post("/api/entries/expense", (req: Request, res: Response) =>
+app.post("/api/entries/expense", (req, res) =>
   send(res, () => logExpense(LogEntrySchema.parse(req.body), authOf(req))),
 );
 
-app.post("/api/entries/income", (req: Request, res: Response) =>
+app.post("/api/entries/income", (req, res) =>
   send(res, () => logIncome(LogEntrySchema.parse(req.body), authOf(req))),
 );
 
-app.get("/api/summary", (req: Request, res: Response) =>
+app.get("/api/summary", (req, res) =>
   send(res, () =>
     getSummary(
       GetSummarySchema.parse({
@@ -193,7 +170,7 @@ app.get("/api/summary", (req: Request, res: Response) =>
   ),
 );
 
-app.get("/api/breakdown", (req: Request, res: Response) =>
+app.get("/api/breakdown", (req, res) =>
   send(res, () =>
     getCategoryBreakdown(
       CategoryBreakdownSchema.parse({ period: req.query.period }),
@@ -202,7 +179,7 @@ app.get("/api/breakdown", (req: Request, res: Response) =>
   ),
 );
 
-app.get("/api/entries", (req: Request, res: Response) =>
+app.get("/api/entries", (req, res) =>
   send(res, () =>
     listEntries(
       ListEntriesSchema.parse({
@@ -222,13 +199,13 @@ app.get("/api/entries", (req: Request, res: Response) =>
   ),
 );
 
-app.patch("/api/entries/:id", (req: Request, res: Response) =>
+app.patch("/api/entries/:id", (req, res) =>
   send(res, () =>
     editEntry(EditEntrySchema.parse({ ...req.body, id: Number(req.params.id) }), authOf(req)),
   ),
 );
 
-app.delete("/api/entries/:id", (req: Request, res: Response) =>
+app.delete("/api/entries/:id", (req, res) =>
   send(res, () =>
     deleteEntry(DeleteEntrySchema.parse({ id: Number(req.params.id) }), authOf(req)),
   ),
