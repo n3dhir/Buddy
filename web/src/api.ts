@@ -34,9 +34,30 @@ export function getToken(): string | null {
   return localStorage.getItem("rafiq_token");
 }
 
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: string;
+}
+
+export function getUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem("rafiq_user");
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function setToken(t: string | null) {
   if (t) localStorage.setItem("rafiq_token", t);
   else localStorage.removeItem("rafiq_token");
+}
+
+export function setSession(token: string | null, user: AuthUser | null) {
+  setToken(token);
+  if (user) localStorage.setItem("rafiq_user", JSON.stringify(user));
+  else localStorage.removeItem("rafiq_user");
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -60,10 +81,21 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  login: (password: string) =>
-    req<{ token: string | null }>(`/api/login`, {
+  register: (username: string, password: string) =>
+    req<{ token: string; user: AuthUser }>(`/api/auth/register`, {
       method: "POST",
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    req<{ token: string; user: AuthUser }>(`/api/auth/login`, {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  users: () => req<AuthUser[]>(`/api/users`),
+  setRole: (id: number, role: string) =>
+    req<AuthUser>(`/api/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
     }),
   summary: (period: Period, category?: string) =>
     req<Summary>(

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, setToken, type Breakdown, type Entry, type Period, type Summary } from "./api";
+import { api, getUser, setSession, type AuthUser, type Breakdown, type Entry, type Period, type Summary } from "./api";
 import logoUrl from "./assets/logo.svg";
 
 const input =
@@ -41,6 +41,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Entry | null>(null);
   const [locked, setLocked] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(() => getUser());
 
   const load = useCallback(async () => {
     try {
@@ -100,6 +101,24 @@ export default function App() {
             <span aria-hidden>↻</span>
             <span className="ml-1.5 hidden md:inline">Refresh</span>
           </button>
+          {user && (
+            <>
+              <span className="hidden rounded-full bg-surface-2 px-2.5 py-1 font-mono text-xs text-ink-muted sm:inline">
+                {user.username} · {user.role}
+              </span>
+              <button
+                onClick={() => {
+                  setSession(null, null);
+                  setUser(null);
+                  setLocked(true);
+                }}
+                className={btnGhost}
+                title="Log out"
+              >
+                ⎋
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -255,6 +274,8 @@ export default function App() {
           <LogForm onDone={load} />
         </section>
 
+        {user?.role === "admin" && <UsersPanel />}
+
         <footer className="mt-12 border-t border-hairline pt-6 text-xs text-ink-tertiary">
           Rafiq · Tunis time (UTC+1) · refresh to sync changes made via chat
         </footer>
@@ -264,7 +285,14 @@ export default function App() {
         <EditDialog entry={editing} onClose={() => setEditing(null)} onDone={load} />
       )}
 
-      {locked && <TokenGate onDone={load} />}
+      {locked && (
+        <AuthGate
+          onDone={(u) => {
+            setUser(u);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -346,6 +374,52 @@ function LogForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+function UsersPanel() {
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const loadUsers = useCallback(() => {
+    api
+      .users()
+      .then(setUsers)
+      .catch((err: Error) => setMsg(err.message));
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  return (
+    <section className={`${card} mt-4 p-6`}>
+      <p className={eyebrow}>Users · admin</p>
+      {msg && <p className="mt-2 text-sm text-red-300">{msg}</p>}
+      <ul className="mt-2 divide-y divide-hairline">
+        {users.map((u) => (
+          <li key={u.id} className="flex items-center justify-between gap-2 py-2.5">
+            <span className="font-mono text-sm text-ink">
+              {u.username} <span className="text-ink-tertiary">#{u.id}</span>
+            </span>
+            <select
+              className="rounded-md border border-hairline bg-canvas px-2 py-1.5 text-sm text-ink"
+              value={u.role}
+              aria-label={`Role for ${u.username}`}
+              onChange={(e) =>
+                api
+                  .setRole(u.id, e.target.value)
+                  .then(loadUsers)
+                  .catch((err: Error) => setMsg(err.message))
+              }
+            >
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function EditDialog({ entry, onClose, onDone }: { entry: Entry; onClose: () => void; onDone: () => void }) {
   const [amount, setAmount] = useState(String(entry.amount));
   const [category, setCategory] = useState(entry.category);
@@ -399,42 +473,66 @@ function EditDialog({ entry, onClose, onDone }: { entry: Entry; onClose: () => v
     </div>
   );
 }
-function TokenGate({ onDone }: { onDone: () => void }) {
-  const [password, setP] = useState("");
+function AuthGate({ onDone }: { onDone: (u: AuthUser) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
     try {
       setMsg(null);
-      const { token } = await api.login(password);
-      setToken(token);
-      setP("");
-      onDone();
+      const { token, user } =
+        mode === "login"
+          ? await api.login(username, password)
+          : await api.register(username, password);
+      setSession(token, user);
+      setUsername("");
+      setPassword("");
+      onDone(user);
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "login failed");
+      setMsg(err instanceof Error ? err.message : "auth failed");
     }
   }
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-canvas p-4">
       <form onSubmit={submit} className={`${card} w-full max-w-sm p-6`}>
-        <p className={eyebrow}>Rafiq is locked</p>
-        <p className="mt-2 text-sm text-ink-subtle">
-          Enter your password to continue.
-        </p>
-        <input
-          className={`${input} mt-3`}
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setP(e.target.value)}
-          required
-          autoFocus
-        />
+        <p className={eyebrow}>{mode === "login" ? "Welcome back" : "Create account"}</p>
+        <div className="mt-3 space-y-2">
+          <input
+            className={input}
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoFocus
+            autoComplete="username"
+          />
+          <input
+            className={input}
+            type="password"
+            placeholder="Password (min 8 chars)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+          />
+        </div>
         {msg && <p className="mt-2 text-sm text-red-300">{msg}</p>}
         <button type="submit" className={`${btnPrimary} mt-3 w-full`}>
-          Unlock
+          {mode === "login" ? "Log in" : "Register"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setMsg(null);
+          }}
+          className="mt-2 w-full text-center text-sm text-ink-subtle hover:text-ink"
+        >
+          {mode === "login" ? "No account? Register" : "Have an account? Log in"}
         </button>
       </form>
     </div>

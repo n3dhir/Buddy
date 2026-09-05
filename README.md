@@ -73,11 +73,21 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
 ## Deploy (VPS + remote MCP)
 
 Same Postgres, two front doors: public web UI and remote MCP over HTTPS.
-No DB port is ever opened — both go through the app. Auth is password
-login (`RAFIQ_PASSWORD`) issuing a signed JWT (`RAFIQ_JWT_SECRET`) that
-guards `/api/*` (except `/api/health` and `/api/login`) and `/mcp`.
-The UI asks for the password once; MCP clients send the JWT as a bearer
-token (fetch one via `POST /api/login`).
+No DB port is ever opened — both go through the app.
+
+## Auth + RBAC
+
+Accounts live in the DB (`users`, bcrypt hashes — no plaintext passwords).
+`POST /api/auth/register` (open unless `ALLOW_REGISTER=false`) and
+`POST /api/auth/login` return a signed JWT (`RAFIQ_JWT_SECRET`, 1y expiry).
+The first registrant becomes **admin** and inherits legacy ownerless rows.
+
+Roles: **admin** (everything, incl. `users:manage`) and **user**
+(`entries:create/read/update/delete` on their own rows only).
+Every tool and endpoint executes as the caller: non-admins get 404 on
+rows they don't own and 403 on admin endpoints. Your JWT *is* your MCP
+credential — same bearer header, per-user scoping (`GET /api/users`,
+`PATCH /api/users/:id` for role changes).
 
 On the VPS (pm2 + system Postgres + nginx):
 

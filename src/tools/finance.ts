@@ -10,6 +10,16 @@ import {
   todayISO,
   type TransactionRow,
 } from "./utils.js";
+import { need, PERMS, SYS_CTX, type AuthCtx } from "./users.js";
+
+// Rows are scoped to the caller: admins see everything, users see their own.
+// SYS_CTX (local stdio, tests) bypasses scoping.
+function scope<T>(q: T, ctx: AuthCtx): T {
+  if (!ctx.isAdmin) {
+    (q as { andWhere: (c: object) => void }).andWhere({ user_id: ctx.userId });
+  }
+  return q;
+}
 
 // ---------- shared ----------
 
@@ -32,7 +42,9 @@ export const LogEntrySchema = z.object({
 
 async function insertEntry(
   input: z.infer<typeof LogEntrySchema> & { is_income: boolean },
+  ctx: AuthCtx = SYS_CTX,
 ) {
+  need(ctx, PERMS.create);
   const db = getDb();
   const date = input.date ?? todayISO();
   if (!isValidDate(date)) throw new Error(`Invalid date: ${date}`);
@@ -44,6 +56,7 @@ async function insertEntry(
     date,
     currency: (input.currency ?? "TND").toUpperCase(),
     is_income: input.is_income,
+    user_id: ctx.userId,
     created_at: nowTunisDateTime(),
     updated_at: nowTunisDateTime(),
   }).returning("id");
@@ -55,12 +68,12 @@ async function insertEntry(
   return normalizeRow(row as TransactionRow);
 }
 
-export async function logExpense(input: z.infer<typeof LogEntrySchema>) {
-  return insertEntry({ ...input, is_income: false });
+export async function logExpense(input: z.infer<typeof LogEntrySchema>, ctx: AuthCtx = SYS_CTX) {
+  return insertEntry({ ...input, is_income: false }, ctx);
 }
 
-export async function logIncome(input: z.infer<typeof LogEntrySchema>) {
-  return insertEntry({ ...input, is_income: true });
+export async function logIncome(input: z.infer<typeof LogEntrySchema>, ctx: AuthCtx = SYS_CTX) {
+  return insertEntry({ ...input, is_income: true }, ctx);
 }
 
 // ---------- get_summary ----------
@@ -70,10 +83,11 @@ export const GetSummarySchema = z.object({
   category: z.string().optional().describe("Optional category filter"),
 });
 
-export async function getSummary(input: z.infer<typeof GetSummarySchema>) {
+export async function getSummary(input: z.infer<typeof GetSummarySchema>, ctx: AuthCtx = SYS_CTX) {
+  need(ctx, PERMS.read);
   const { from, to } = resolvePeriod(input.period);
   const db = getDb();
-  const q = db("transactions").whereBetween("date", [from, to]);
+  const q = scope(db("transactions").whereBetween("date", [from, to]), ctx);
   if (input.category) q.andWhere({ category: normCat(input.category) });
   const rows = (await q.select()) as TransactionRow[];
   let income = 0;
@@ -104,12 +118,15 @@ export const CategoryBreakdownSchema = z.object({
 
 export async function getCategoryBreakdown(
   input: z.infer<typeof CategoryBreakdownSchema>,
+  ctx: AuthCtx = SYS_CTX,
 ) {
+  need(ctx, PERMS.read);
   const { from, to } = resolvePeriod(input.period);
   const db = getDb();
-  const rows = await db("transactions")
-    .whereBetween("date", [from, to])
-    .andWhere({ is_income: false })
+  const rows = await scope(
+    db("transactions").whereBetween("date", [from, to]).andWhere({ is_income: false }),
+    ctx,
+  )
     .select("category")
     .sum({ total: "amount" })
     .count({ count: "id" })
@@ -138,9 +155,10 @@ export const ListEntriesSchema = z.object({
   limit: z.number().int().positive().max(200).optional().describe("Max rows, default 50"),
 });
 
-export async function listEntries(input: z.infer<typeof ListEntriesSchema>) {
+export async function listEntries(input: z.infer<typeof ListEntriesSchema>, ctx: AuthCtx = SYS_CTX) {
+  need(ctx, PERMS.read);
   const db = getDb();
-  const q = db("transactions").orderBy("date", "desc").orderBy("id", "desc");
+  const q = scope(db("transactions").orderBy("date", "desc").orderBy("id", "desc"), ctx);
   if (input.date_from) q.andWhere("date", ">=", input.date_from);
   if (input.date_to) q.andWhere("date", "<=", input.date_to);
   if (input.category) q.andWhere({ category: normCat(input.category) });
@@ -164,9 +182,10 @@ export const EditEntrySchema = z.object({
   is_income: z.boolean().optional(),
 });
 
-export async function editEntry(input: z.infer<typeof EditEntrySchema>) {
+export async function editEntry(input: z.infer<typeof EditEntrySchema>, ctx: AuthCtx = SYS_CTX) {
+  need(ctx, PERMS.update);
   const db = getDb();
-  const existing = await db("transactions").where({ id: input.id }).first();
+  const existing = await scope(db("transactions").where({ id: input.id }), ctx).first();
   if (!existing) throw new Error(`Entry #${input.id} not found`);
   const patch: Record<string, unknown> = {};
   if (input.amount !== undefined) patch.amount = round2(input.amount);
@@ -194,9 +213,11 @@ export const DeleteEntrySchema = z.object({
 
 export async function deleteEntry(
   input: z.infer<typeof DeleteEntrySchema>,
+  ctx: AuthCtx = SYS_CTX,
 ) {
+  need(ctx, PERMS.delete);
   const db = getDb();
-  const deleted = await db("transactions").where({ id: input.id }).del();
+  const deleted = await scope(db("transactions").where({ id: input.id }), ctx).del();
   if (!deleted) throw new Error(`Entry #${input.id} not found`);
   return { deleted: true, id: input.id };
 }

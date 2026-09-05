@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import express, {
   type NextFunction,
   type Request,
@@ -8,8 +7,23 @@ import jwt from "jsonwebtoken";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 import { createServer } from "./server.js";
+import {
+  authenticate,
+  ctxFor,
+  listUsers,
+  LoginSchema,
+  permsFor,
+  register,
+  RegisterSchema,
+  setRole,
+  SetRoleSchema,
+  SYS_CTX,
+  type AuthCtx,
+} from "./tools/users.js";
+
+type AuthedRequest = Request & { auth: AuthCtx };
 import {
   CategoryBreakdownSchema,
   DeleteEntrySchema,
@@ -30,64 +44,83 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
 
-// Password login -> JWT. Single user: one password (RAFIQ_PASSWORD),
-// one signing secret (RAFIQ_JWT_SECRET), tokens valid 1 year.
-// Both unset = open (local dev) with a warning; set them in production.
+// Auth: users table + password login -> JWT ({sub: userId}).
+// Fresh DB (no users yet) = open, so the first account can register.
+// Otherwise every /api (except health/auth) and /mcp call needs a JWT,
+// resolved to a live AuthCtx (role + permissions) per request.
 const JWT_EXPIRY = "365d";
 
-function authConfigured(): boolean {
-  return Boolean(process.env.RAFIQ_PASSWORD && process.env.RAFIQ_JWT_SECRET);
+function mintToken(userId: number): string {
+  return jwt.sign(
+    { sub: userId },
+    process.env.RAFIQ_JWT_SECRET as string,
+    { expiresIn: JWT_EXPIRY },
+  );
+}
+
+async function resolveAuth(req: Request): Promise<AuthCtx> {
+  const db = (await import("./db/client.js")).getDb();
+  const [{ count }] = await db("users").count({ count: "id" });
+  if (Number(count) === 0) return SYS_CTX;
+  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  try {
+    const payload = jwt.verify(token, process.env.RAFIQ_JWT_SECRET as string) as unknown as {
+      sub: number;
+    };
+    const { role, perms } = await permsFor(Number(payload.sub));
+    return ctxFor(Number(payload.sub), role, perms);
+  } catch {
+    throw Object.assign(new Error("unauthorized"), { status: 401 });
+  }
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!authConfigured()) {
-    console.warn("RAFIQ_PASSWORD/JWT_SECRET unset — API/MCP open. Set them in production.");
-    return next();
-  }
-  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  try {
-    jwt.verify(token, process.env.RAFIQ_JWT_SECRET as string);
-    next();
-  } catch {
-    res.status(401).json({ error: "unauthorized" });
-  }
+  resolveAuth(req).then(
+    (auth) => {
+      (req as AuthedRequest).auth = auth;
+      next();
+    },
+    (e: unknown) => {
+      res.status(401).json({ error: e instanceof Error ? e.message : "unauthorized" });
+    },
+  );
 }
 
-function checkPassword(password: unknown): boolean {
-  const expected = process.env.RAFIQ_PASSWORD ?? "";
-  if (!expected || typeof password !== "string") return false;
-  const a = Buffer.from(password);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
+const authOf = (req: Request): AuthCtx => (req as AuthedRequest).auth ?? SYS_CTX;
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api", (req, res, next) => {
-  if (req.path === "/health" || req.path === "/login") return next();
+  if (req.path === "/health" || req.path.startsWith("/auth/")) return next();
   requireAuth(req, res, next);
 });
 
-app.post("/api/login", (req: Request, res: Response) =>
+app.post("/api/auth/register", (req: Request, res: Response) =>
   send(res, async () => {
-    if (!authConfigured()) return { token: null, open: true };
-    const { password } = z.object({ password: z.string() }).parse(req.body);
-    if (!checkPassword(password)) {
-      const e = new Error("invalid password") as Error & { status?: number };
-      e.status = 401;
-      throw e;
-    }
-    const token = jwt.sign(
-      { sub: "rafiq" },
-      process.env.RAFIQ_JWT_SECRET as string,
-      { expiresIn: JWT_EXPIRY },
-    );
-    return { token };
+    const user = await register(req.body);
+    return { token: mintToken(user.id), user };
   }),
 );
 
-// Remote MCP (Streamable HTTP, stateless) — same tools as the stdio server.
+app.post("/api/auth/login", (req: Request, res: Response) =>
+  send(res, async () => {
+    const user = await authenticate(req.body);
+    return { token: mintToken(user.id), user };
+  }),
+);
+
+app.get("/api/users", (req: Request, res: Response) =>
+  send(res, () => listUsers(authOf(req))),
+);
+
+app.patch("/api/users/:id", (req: Request, res: Response) =>
+  send(res, () =>
+    setRole({ id: Number(req.params.id), role: req.body?.role }, authOf(req)),
+  ),
+);
+
+// Remote MCP (Streamable HTTP, stateless) — same tools, acting as the caller.
 async function handleMcp(req: Request, res: Response) {
-  const server = createServer();
+  const server = createServer(() => authOf(req));
   try {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
@@ -131,11 +164,11 @@ function send(res: Response, fn: () => Promise<unknown>) {
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.post("/api/entries/expense", (req: Request, res: Response) =>
-  send(res, () => logExpense(LogEntrySchema.parse(req.body))),
+  send(res, () => logExpense(LogEntrySchema.parse(req.body), authOf(req))),
 );
 
 app.post("/api/entries/income", (req: Request, res: Response) =>
-  send(res, () => logIncome(LogEntrySchema.parse(req.body))),
+  send(res, () => logIncome(LogEntrySchema.parse(req.body), authOf(req))),
 );
 
 app.get("/api/summary", (req: Request, res: Response) =>
@@ -145,6 +178,7 @@ app.get("/api/summary", (req: Request, res: Response) =>
         period: req.query.period,
         category: req.query.category,
       }),
+      authOf(req),
     ),
   ),
 );
@@ -153,6 +187,7 @@ app.get("/api/breakdown", (req: Request, res: Response) =>
   send(res, () =>
     getCategoryBreakdown(
       CategoryBreakdownSchema.parse({ period: req.query.period }),
+      authOf(req),
     ),
   ),
 );
@@ -172,19 +207,20 @@ app.get("/api/entries", (req: Request, res: Response) =>
         limit:
           req.query.limit === undefined ? undefined : Number(req.query.limit),
       }),
+      authOf(req),
     ),
   ),
 );
 
 app.patch("/api/entries/:id", (req: Request, res: Response) =>
   send(res, () =>
-    editEntry(EditEntrySchema.parse({ ...req.body, id: Number(req.params.id) })),
+    editEntry(EditEntrySchema.parse({ ...req.body, id: Number(req.params.id) }), authOf(req)),
   ),
 );
 
 app.delete("/api/entries/:id", (req: Request, res: Response) =>
   send(res, () =>
-    deleteEntry(DeleteEntrySchema.parse({ id: Number(req.params.id) })),
+    deleteEntry(DeleteEntrySchema.parse({ id: Number(req.params.id) }), authOf(req)),
   ),
 );
 

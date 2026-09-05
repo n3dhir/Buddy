@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SYS_CTX, type AuthCtx } from "./tools/users.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CategoryBreakdownSchema,
@@ -25,7 +26,7 @@ function err(e: unknown) {
   return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true as const };
 }
 
-export function createServer(): McpServer {
+export function createServer(auth: () => AuthCtx = () => SYS_CTX): McpServer {
   const server = new McpServer({ name: "rafiq", version: "0.1.0" });
 
   server.registerTool(
@@ -37,7 +38,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await logExpense(LogEntrySchema.parse(args)));
+        return json(await logExpense(LogEntrySchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -53,7 +54,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await logIncome(LogEntrySchema.parse(args)));
+        return json(await logIncome(LogEntrySchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -69,7 +70,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await getSummary(GetSummarySchema.parse(args)));
+        return json(await getSummary(GetSummarySchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -85,7 +86,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await getCategoryBreakdown(CategoryBreakdownSchema.parse(args)));
+        return json(await getCategoryBreakdown(CategoryBreakdownSchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -101,7 +102,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await listEntries(ListEntriesSchema.parse(args)));
+        return json(await listEntries(ListEntriesSchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -117,7 +118,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await editEntry(EditEntrySchema.parse(args)));
+        return json(await editEntry(EditEntrySchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
@@ -133,7 +134,7 @@ export function createServer(): McpServer {
     },
     async (args) => {
       try {
-        return json(await deleteEntry(DeleteEntrySchema.parse(args)));
+        return json(await deleteEntry(DeleteEntrySchema.parse(args), auth()));
       } catch (e) {
         return err(e);
       }
