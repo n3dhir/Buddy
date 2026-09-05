@@ -112,6 +112,11 @@ export const api = {
     }),
   revokeToken: (id: number) =>
     req<{ revoked: boolean }>(`/api/tokens/${id}`, { method: "DELETE" }),
+  updateToken: (id: number, patch: { name?: string; scopes?: string[] }) =>
+    req<TokenInfo>(`/api/tokens/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   summary: (period: Period, category?: string) =>
     req<Summary>(
       `/api/summary?period=${period}${category ? `&category=${encodeURIComponent(category)}` : ""}`,

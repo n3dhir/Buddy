@@ -15,6 +15,7 @@ import {
   revokeToken,
   SCOPES,
   sysCtx,
+  updateToken,
 } from "./tools/users.js";
 import {
   CategoryBreakdownSchema,
@@ -105,6 +106,10 @@ app.post("/api/tokens", (req, res) =>
 
 app.delete("/api/tokens/:id", (req, res) =>
   send(res, async () => revokeToken(authOf(req).userId, Number(req.params.id))),
+);
+
+app.patch("/api/tokens/:id", (req, res) =>
+  send(res, async () => updateToken(authOf(req).userId, Number(req.params.id), req.body)),
 );
 
 // Remote MCP (Streamable HTTP, stateless) — same tools, acting as the caller.
