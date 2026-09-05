@@ -8,6 +8,8 @@ export default function TokensPanel() {
   const [scopes, setScopes] = useState<string[]>([...ALL_SCOPES]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editScopes, setEditScopes] = useState<string[]>([]);
 
   const loadTokens = useCallback(() => {
     api
@@ -22,6 +24,17 @@ export default function TokensPanel() {
 
   function toggleScope(s: string) {
     setScopes(scopes.includes(s) ? scopes.filter((x) => x !== s) : [...scopes, s]);
+  }
+
+  async function saveScopes(id: number) {
+    try {
+      setMsg(null);
+      await api.updateToken(id, { scopes: editScopes });
+      setEditingId(null);
+      loadTokens();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "save failed");
+    }
   }
 
   async function create(ev: React.FormEvent) {
@@ -85,28 +98,71 @@ export default function TokensPanel() {
       </div>
       <ul className="mt-2 divide-y divide-hairline">
         {tokens.map((t) => (
-          <li key={t.id} className="flex items-center justify-between gap-2 py-2.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm text-ink">
-                {t.name || "(unnamed)"}{" "}
-                <span className="font-mono text-xs text-ink-tertiary">#{t.id}</span>
-              </p>
-              <p className="truncate font-mono text-xs text-ink-subtle">
-                {t.scopes.map((s) => s.replace("entries:", "")).join(" · ")}
-              </p>
+          <li key={t.id} className="py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-ink">
+                  {t.name || "(unnamed)"}{" "}
+                  <span className="font-mono text-xs text-ink-tertiary">#{t.id}</span>
+                </p>
+                <p className="truncate font-mono text-xs text-ink-subtle">
+                  {t.scopes.map((s) => s.replace("entries:", "")).join(" · ")}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  onClick={() => {
+                    setEditingId(editingId === t.id ? null : t.id);
+                    setEditScopes(t.scopes);
+                  }}
+                  className={btnGhost}
+                  aria-label={`Edit scopes for token ${t.id}`}
+                >
+                  {editingId === t.id ? "Close" : "Scopes"}
+                </button>
+                <button
+                  onClick={() =>
+                    api
+                      .revokeToken(t.id)
+                      .then(loadTokens)
+                      .catch((err: Error) => setMsg(err.message))
+                  }
+                  className={btnGhost}
+                  aria-label={`Revoke token ${t.id}`}
+                >
+                  Revoke
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() =>
-                api
-                  .revokeToken(t.id)
-                  .then(loadTokens)
-                  .catch((err: Error) => setMsg(err.message))
-              }
-              className={btnGhost}
-              aria-label={`Revoke token ${t.id}`}
-            >
-              Revoke
-            </button>
+            {editingId === t.id && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-canvas p-3">
+                {ALL_SCOPES.map((s) => (
+                  <label
+                    key={s}
+                    className={`flex min-h-[36px] cursor-pointer items-center gap-2 rounded-full border px-3 text-xs ${
+                      editScopes.includes(s) ? "border-brand text-ink" : "border-hairline text-ink-subtle"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-[#5e6ad2]"
+                      checked={editScopes.includes(s)}
+                      onChange={() =>
+                        setEditScopes(
+                          editScopes.includes(s)
+                            ? editScopes.filter((x) => x !== s)
+                            : [...editScopes, s],
+                        )
+                      }
+                    />
+                    {s.replace("entries:", "")}
+                  </label>
+                ))}
+                <button onClick={() => void saveScopes(t.id)} className={btnPrimary}>
+                  Save
+                </button>
+              </div>
+            )}
           </li>
         ))}
         {tokens.length === 0 && (

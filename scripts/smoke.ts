@@ -16,6 +16,7 @@ import {
   register,
   revokeToken,
   SCOPES,
+  updateToken,
 } from "../src/tools/users.js";
 
 async function expectFail(fn: () => Promise<unknown>, label: string) {
@@ -72,6 +73,14 @@ async function main() {
   await expectFail(() => editEntry({ id: mine.id, note: "hijack" }, roCtx), "cross-user edit");
   await revokeToken(sam.id, readToken.id);
   await expectFail(() => authForToken(readToken.token), "revoked token");
+  const flex = await createToken(owner.id, { name: "flex", scopes: [...SCOPES] });
+  const flexCtx = await authForToken(flex.token);
+  await logExpense({ amount: 1, category: "flex" }, flexCtx);
+  await updateToken(owner.id, flex.id, { scopes: ["entries:read"] });
+  const narrowed = await authForToken(flex.token);
+  await expectFail(() => logExpense({ amount: 1, category: "x" }, narrowed), "narrowed create");
+  console.log("narrowed list:", (await listEntries({}, narrowed)).length, "row(s)");
+  await expectFail(() => updateToken(owner.id, 9999, { scopes: ["entries:read"] }), "update missing token");
   await deleteEntry({ id: mine.id }, ownerCtx);
 
   await closeDb();
