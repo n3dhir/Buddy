@@ -89,26 +89,6 @@ export async function createToken(userId, input) {
     const row = await db("tokens").where({ id: tokenId }).first();
     return { ...toTokenInfo(row), token };
 }
-export const UpdateTokenSchema = z.object({
-    name: z.string().max(64).optional().describe("New label"),
-    scopes: z.array(z.enum(SCOPES)).min(1).describe("New permissions for this token"),
-});
-export async function updateToken(userId, id, input) {
-    const patch = UpdateTokenSchema.parse(input);
-    if (Object.keys(patch).length === 0)
-        throw new Error("Nothing to update");
-    const data = {};
-    if (patch.name !== undefined)
-        data.name = patch.name;
-    if (patch.scopes !== undefined)
-        data.scopes = JSON.stringify(patch.scopes);
-    const db = getDb();
-    const updated = await db("tokens").where({ id, user_id: userId }).update(data);
-    if (!updated)
-        throw new Error(`token #${id} not found`);
-    const row = await db("tokens").where({ id }).first();
-    return toTokenInfo(row);
-}
 export async function listTokens(userId) {
     const db = getDb();
     const rows = await db("tokens").where({ user_id: userId }).orderBy("id").select();

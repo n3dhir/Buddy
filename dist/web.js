@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ZodError } from "zod";
 import { createServer } from "./server.js";
-import { authenticate, authForToken, createToken, ctxFor, listTokens, register, revokeToken, SCOPES, sysCtx, updateToken, } from "./tools/users.js";
+import { authenticate, authForToken, createToken, ctxFor, listTokens, register, revokeToken, SCOPES, sysCtx, } from "./tools/users.js";
 import { CategoryBreakdownSchema, DeleteEntrySchema, EditEntrySchema, GetSummarySchema, ListEntriesSchema, LogEntrySchema, deleteEntry, editEntry, getCategoryBreakdown, getSummary, listEntries, logExpense, logIncome, } from "./tools/finance.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -61,7 +61,6 @@ app.post("/api/auth/login", (req, res) => send(res, async () => {
 app.get("/api/tokens", (req, res) => send(res, async () => listTokens(authOf(req).userId)));
 app.post("/api/tokens", (req, res) => send(res, async () => createToken(authOf(req).userId, req.body)));
 app.delete("/api/tokens/:id", (req, res) => send(res, async () => revokeToken(authOf(req).userId, Number(req.params.id))));
-app.patch("/api/tokens/:id", (req, res) => send(res, async () => updateToken(authOf(req).userId, Number(req.params.id), req.body)));
 // Remote MCP (Streamable HTTP, stateless) — same tools, acting as the caller.
 async function handleMcp(req, res) {
     const server = createServer(() => authOf(req));
