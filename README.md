@@ -116,6 +116,29 @@ MCP endpoint notes: Streamable HTTP, stateless (one POST per request —
 initialize, then call tools normally). `/mcp` GET/DELETE return 405, as
 expected for stateless servers.
 
+## Telegram bot (webhook, optional)
+
+Log expenses and check totals from chat. The bot is off unless
+`TELEGRAM_BOT_TOKEN` is set.
+
+Setup:
+
+```bash
+# 1. @BotFather → /newbot → token into .env (TELEGRAM_BOT_TOKEN)
+#    plus a TELEGRAM_WEBHOOK_SECRET, then:
+npm run migrate   # creates `telegram_links`
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<domain>/telegram/webhook?secret=<SECRET>"
+# 2. In Telegram: mint a token in the web UI (Tokens page),
+#    then send the bot: /start <token>
+```
+
+The chat inherits exactly that token's scopes — revoking it in the UI
+unlinks the chat (re-link with a fresh `/start`). Commands:
+`/expense 12.5 food shawarma`, `/income 2000 salary aug`,
+`/summary month`, `/breakdown month`, `/list food 10`,
+`/delete 12`, `/unlink`, `/help`. Every log carries an
+[Undo] button (needs `entries:delete` on the linked token).
+
 ## Layout
 
 ```
