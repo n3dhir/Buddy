@@ -140,6 +140,10 @@ export function scopeForAction(action) {
             return null;
     }
 }
+// Reads answer instantly; writes wait for the user's Confirm tap.
+export function needsConfirm(action) {
+    return action === "log_expense" || action === "log_income" || action === "delete_entry";
+}
 // What's missing before an intent is executable (for the "almost" reply).
 export function missingFields(intent) {
     const missing = [];
