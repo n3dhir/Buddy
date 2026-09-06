@@ -7,6 +7,7 @@ export function isTelegramConfigured() {
 }
 
 let bot = null;
+let initPromise = null;
 
 function undoKeyboard(entryId) {
   return new InlineKeyboard().text("↩️ Undo", `undo:${entryId}`);
@@ -24,8 +25,11 @@ function errText(e: any) {
   return "⚠️ Something went wrong.";
 }
 
-export function getTelegramBot() {
-  if (bot) return bot;
+export async function getTelegramBot() {
+  if (bot) {
+    await initPromise;
+    return bot;
+  }
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return null;
   bot = new Bot(token);
@@ -98,12 +102,24 @@ export function getTelegramBot() {
     await ctx.reply(HELP);
   });
 
+  // Webhook-only mode never calls bot.start(), so fetch bot info
+  // (getMe) explicitly — otherwise the first handleUpdate throws
+  // "Bot not initialized!". Cached: concurrent updates share it,
+  // and a failure resets so the next update retries.
+  if (!initPromise) {
+    initPromise = bot.init().catch((e) => {
+      bot = null;
+      initPromise = null;
+      throw e;
+    });
+  }
+  await initPromise;
   return bot;
 }
 
 // Webhook entry: throws when unconfigured so web.ts can answer 503.
 export async function handleTelegramUpdate(update) {
-  const b = getTelegramBot();
+  const b = await getTelegramBot();
   if (!b) throw Object.assign(new Error("telegram not configured"), { status: 503 });
   await b.handleUpdate(update);
 }
