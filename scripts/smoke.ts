@@ -106,6 +106,36 @@ async function main() {
   await unlinkChat(4242);
   if (await ctxForChat(4242)) throw new Error("telegram: expected unlinked after /unlink");
 
+  // LLM layer: pure logic + graceful degradation (no Ollama needed).
+  const llm = await import("../src/telegram/llm.js");
+  const pending = await import("../src/telegram/pending.js");
+  const { executeIntent } = await import("../src/telegram/commands.js");
+  const proposal = llm.formatProposal({ action: "log_expense", amount: 12.5, category: "food", note: "shawarma" });
+  if (!proposal?.includes("12.50")) throw new Error("telegram: bad proposal format");
+  if (llm.missingFields({ action: "log_expense", amount: null, category: null }).join() !== "amount,category") {
+    throw new Error("telegram: bad missing-fields");
+  }
+  if (llm.scopeForAction("log_expense") !== "entries:create") throw new Error("telegram: bad scope map");
+  // qwen3:1.7b returns numbers as strings — schema must coerce.
+  const coerced = llm.IntentSchema.parse({ action: "log_expense", amount: "12.5", category: "food", note: "shawarma", period: "month" });
+  if (coerced.amount !== 12.5) throw new Error("telegram: numeric-string coercion failed");
+  const pid = pending.savePending(4242, { action: "log_expense", amount: 2, category: "llm" });
+  if (pending.takePending(pid, 9999)) throw new Error("telegram: pending leaked across chats");
+  const pid2 = pending.savePending(4242, { action: "log_expense", amount: 2, category: "llm" }, 1);
+  await new Promise((r) => setTimeout(r, 5));
+  if (pending.takePending(pid2, 4242)) throw new Error("telegram: pending TTL ignored");
+  const pid3 = pending.savePending(4242, { action: "log_expense", amount: 2, category: "llm" });
+  const confirmed = pending.takePending(pid3, 4242);
+  const viaIntent = await executeIntent(ownerCtx, confirmed);
+  console.log("telegram intent:", viaIntent.text);
+  if (!viaIntent.undoId) throw new Error("telegram: intent missing undoId");
+  await deleteEntry({ id: viaIntent.undoId }, ownerCtx);
+  process.env.OLLAMA_HOST = "http://127.0.0.1:1";
+  process.env.OLLAMA_TIMEOUT_MS = "2000";
+  await expectFail(() => llm.parseFreeText("hello", ownerCtx), "ollama down");
+  delete process.env.OLLAMA_HOST;
+  delete process.env.OLLAMA_TIMEOUT_MS;
+
   await closeDb();
   console.log("SMOKE OK");
 }

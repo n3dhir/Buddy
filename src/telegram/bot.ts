@@ -1,6 +1,8 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { ctxForChat, linkChat, unlinkChat } from "./link.js";
-import { HELP, cmdUndo, dispatch, parseCommand } from "./commands.js";
+import { HELP, cmdUndo, dispatch, executeIntent, parseCommand } from "./commands.js";
+import { formatProposal, LLMUnavailable, missingFields, parseFreeText, scopeForAction } from "./llm.js";
+import { savePending, takePending } from "./pending.js";
 
 export function isTelegramConfigured() {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN);
@@ -98,8 +100,78 @@ export async function getTelegramBot() {
     }
   });
 
+  bot.callbackQuery(/^lc:([0-9a-f]+)$/, async (ctx) => {
+    const intent = takePending(ctx.match[1], ctx.chat.id);
+    if (!intent) {
+      await ctx.answerCallbackQuery({ text: "Expired — send it again.", show_alert: true });
+      return;
+    }
+    const auth = await ctxForChat(ctx.chat.id);
+    if (!auth) {
+      await ctx.editMessageText("🔗 Link this chat first: /start <token from the Tokens page>");
+      return;
+    }
+    try {
+      const reply: any = await executeIntent(auth, intent);
+      if (reply.undoId) {
+        await ctx.editMessageText(reply.text, { reply_markup: undoKeyboard(reply.undoId) });
+      } else {
+        await ctx.editMessageText(reply.text);
+      }
+    } catch (e) {
+      await ctx.editMessageText(errText(e));
+    }
+  });
+
+  bot.callbackQuery(/^lx:([0-9a-f]+)$/, async (ctx) => {
+    const intent = takePending(ctx.match[1], ctx.chat.id);
+    await ctx.editMessageText(intent ? "❌ Cancelled — nothing logged." : "Already expired.");
+  });
+
+  // NOTE: grammy runs every matching handler, so commands handled
+  // above would ALSO land here — the "/" guard stops double replies.
   bot.on("message:text", async (ctx) => {
-    await ctx.reply(HELP);
+    const text = ctx.message?.text ?? "";
+    if (text.trim().startsWith("/")) return;
+    const auth = await ctxForChat(ctx.chat.id);
+    if (!auth) {
+      await ctx.reply("🔗 Link this chat first: /start <token from the Tokens page>");
+      return;
+    }
+    let intent;
+    try {
+      await ctx.replyWithChatAction("typing");
+      intent = await parseFreeText(text, auth);
+    } catch (e) {
+      if (e instanceof LLMUnavailable) {
+        await ctx.reply("🧠 My parser is offline right now — use commands instead:\n\n" + HELP);
+      } else {
+        await ctx.reply(errText(e));
+      }
+      return;
+    }
+    if (intent.action === "unknown") {
+      await ctx.reply("🤷 I didn't get that. Try:\n" + HELP);
+      return;
+    }
+    const missing = missingFields(intent);
+    if (missing.length > 0) {
+      await ctx.reply(`Almost — I need: ${missing.join(" + ")}.\nExample: “shawarma 12.5”.`);
+      return;
+    }
+    const scope = scopeForAction(intent.action);
+    if (scope && !auth.can(scope)) {
+      await ctx.reply(`⛔ I understood (${intent.action}), but your token lacks ${scope}. Mint a wider token (Tokens page) and /start again.`);
+      return;
+    }
+    const proposal = formatProposal(intent);
+    if (!proposal) {
+      await ctx.reply("🤷 I can't do that yet — try /help for commands.");
+      return;
+    }
+    const id = savePending(ctx.chat.id, intent);
+    const kb = new InlineKeyboard().text("✅ Confirm", `lc:${id}`).text("❌ Cancel", `lx:${id}`);
+    await ctx.reply(proposal, { reply_markup: kb });
   });
 
   // Webhook-only mode never calls bot.start(), so fetch bot info

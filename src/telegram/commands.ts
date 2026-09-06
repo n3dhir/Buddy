@@ -17,6 +17,8 @@ export const HELP = [
   "/delete <id> — delete an entry",
   "/unlink — forget this chat's link",
   "/help — this message",
+  "",
+  "Or just type naturally (e.g. “shawarma 12.5”) — I'll confirm before logging anything.",
 ].join("\n");
 
 const USAGE = {
@@ -139,6 +141,28 @@ export async function cmdUndo(ctx, entryId) {
   await deleteEntry({ id }, ctx);
   const what = target ? ` (${money(target.amount, target.currency)} · ${target.category})` : "";
   return { text: `↩️ Undone entry #${id}${what}.` };
+}
+
+// Execute an LLM-parsed intent by reusing the command handlers
+// (same validation, same scope checks, same undo wiring).
+export async function executeIntent(ctx, intent) {
+  const note = intent.note ? ` ${intent.note}` : "";
+  switch (intent.action) {
+    case "log_expense":
+      return cmdExpense(ctx, `${intent.amount} ${intent.category}${note}`);
+    case "log_income":
+      return cmdIncome(ctx, `${intent.amount} ${intent.category}${note}`);
+    case "get_summary":
+      return cmdSummary(ctx, `${intent.period ?? ""} ${intent.category ?? ""}`.trim());
+    case "get_category_breakdown":
+      return cmdBreakdown(ctx, intent.period ?? "");
+    case "list_entries":
+      return cmdList(ctx, `${intent.category ?? ""} ${intent.limit ?? ""}`.trim());
+    case "delete_entry":
+      return cmdDelete(ctx, String(intent.entry_id ?? ""));
+    default:
+      fail("I can't do that yet — try /help for commands.");
+  }
 }
 
 export async function dispatch(ctx, cmd, argStr) {
