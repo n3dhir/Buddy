@@ -83,6 +83,29 @@ async function main() {
   await expectFail(() => updateToken(owner.id, 9999, { scopes: ["entries:read"] }), "update missing token");
   await deleteEntry({ id: mine.id }, ownerCtx);
 
+  // Telegram: link chat → scoped ctx → commands → unlink.
+  // (Handlers only — no Telegram network involved.)
+  const { linkChat, ctxForChat, unlinkChat } = await import("../src/telegram/link.js");
+  const { parseCommand, dispatch, cmdUndo } = await import("../src/telegram/commands.js");
+  const tgToken = await createToken(owner.id, { name: "tg", scopes: [...SCOPES] });
+  if (await ctxForChat(4242)) throw new Error("telegram: expected unlinked chat");
+  await linkChat(4242, tgToken.token);
+  const tgCtx = await ctxForChat(4242);
+  if (!tgCtx) throw new Error("telegram: expected linked chat");
+  const logged = await dispatch(tgCtx, "expense", "9.5 food tg-test");
+  console.log("telegram log:", logged.text);
+  if (!logged.undoId) throw new Error("telegram: expected undoId");
+  const undone = await cmdUndo(tgCtx, logged.undoId);
+  console.log("telegram undo:", undone.text);
+  const parsed = parseCommand("/summary@rafiq_bot month");
+  if (parsed.cmd !== "summary") throw new Error("telegram: @botname parse failed");
+  console.log("telegram summary:", (await dispatch(tgCtx, parsed.cmd, parsed.argStr)).text);
+  await expectFail(() => linkChat(4242, "rafiq_bogus"), "bad link token");
+  await revokeToken(owner.id, tgToken.id);
+  await expectFail(() => ctxForChat(4242), "revoked link token");
+  await unlinkChat(4242);
+  if (await ctxForChat(4242)) throw new Error("telegram: expected unlinked after /unlink");
+
   await closeDb();
   console.log("SMOKE OK");
 }

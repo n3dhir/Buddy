@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ZodError } from "zod";
 import { createServer } from "./server.js";
+import { handleTelegramUpdate } from "./telegram/bot.js";
 import {
   authenticate,
   authForToken,
@@ -129,6 +130,26 @@ async function handleMcp(req, res) {
 app.post("/mcp", requireAuth, handleMcp);
 app.get("/mcp", requireAuth, handleMcp);
 app.delete("/mcp", requireAuth, handleMcp);
+
+// Telegram bot (webhook only). Telegram retries non-2xx, so always
+// answer 200: handler failures are logged, the user gets the error
+// as a chat message on the next update instead of a redelivery storm.
+app.post("/telegram/webhook", (req, res) => {
+  Promise.resolve()
+    .then(async () => {
+      const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
+      if (!secret || req.query.secret !== secret) fail("forbidden", 403);
+      await handleTelegramUpdate(req.body);
+      return { ok: true };
+    })
+    .then(
+      (data) => res.json(data),
+      (e) => {
+        console.error("telegram webhook:", e instanceof Error ? e.message : e);
+        res.json({ ok: true });
+      },
+    );
+});
 
 function send(res, fn) {
   // Promise.resolve().then() so sync Zod throws become rejections too.
