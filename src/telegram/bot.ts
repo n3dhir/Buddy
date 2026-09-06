@@ -1,7 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { ctxForChat, linkChat, unlinkChat } from "./link.js";
 import { HELP, cmdUndo, dispatch, executeIntent, parseCommand } from "./commands.js";
-import { formatProposal, LLMUnavailable, missingFields, parseFreeText, scopeForAction } from "./llm.js";
+import { formatProposal, LLMUnavailable, missingFields, needsConfirm, parseFreeText, scopeForAction } from "./llm.js";
 import { savePending, takePending } from "./pending.js";
 
 export function isTelegramConfigured() {
@@ -162,6 +162,16 @@ export async function getTelegramBot() {
     const scope = scopeForAction(intent.action);
     if (scope && !auth.can(scope)) {
       await ctx.reply(`⛔ I understood (${intent.action}), but your token lacks ${scope}. Mint a wider token (Tokens page) and /start again.`);
+      return;
+    }
+    // Reads are harmless: answer right away. Writes go through Confirm.
+    if (!needsConfirm(intent.action)) {
+      try {
+        const reply: any = await executeIntent(auth, intent);
+        await ctx.reply(reply.text);
+      } catch (e) {
+        await ctx.reply(errText(e));
+      }
       return;
     }
     const proposal = formatProposal(intent);

@@ -116,6 +116,9 @@ async function main() {
     throw new Error("telegram: bad missing-fields");
   }
   if (llm.scopeForAction("log_expense") !== "entries:create") throw new Error("telegram: bad scope map");
+  if (!llm.needsConfirm("log_expense") || llm.needsConfirm("get_summary")) {
+    throw new Error("telegram: bad confirm gating (reads instant, writes confirm)");
+  }
   // qwen3:1.7b returns numbers as strings — schema must coerce.
   const coerced = llm.IntentSchema.parse({ action: "log_expense", amount: "12.5", category: "food", note: "shawarma", period: "month" });
   if (coerced.amount !== 12.5) throw new Error("telegram: numeric-string coercion failed");

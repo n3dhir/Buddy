@@ -141,8 +141,9 @@ unlinks the chat (re-link with a fresh `/start`). Commands:
 
 Free text (optional): with Ollama configured (`OLLAMA_HOST`,
 `OLLAMA_MODEL`, e.g. `qwen3:1.7b`), plain messages like
-`shawarma 12.5` are parsed into a proposal the bot shows with
-[Confirm]/[Cancel] — nothing is written before you confirm.
+`shawarma 12.5` are parsed and answered directly for reads
+(summary, breakdown, list) or shown with [Confirm]/[Cancel]
+for writes — nothing is written before you confirm.
 The model only proposes; validated code executes, scope-checked
 against the linked token. If Ollama is unreachable the bot says
 so and commands keep working.
