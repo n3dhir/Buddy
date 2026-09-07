@@ -148,6 +148,13 @@ The model only proposes; validated code executes, scope-checked
 against the linked token. If Ollama is unreachable the bot says
 so and commands keep working.
 
+Voice notes (optional): with whisper.cpp configured (`WHISPER_BIN`,
+`WHISPER_MODEL`, e.g. `ggml-small.bin`, plus system `ffmpeg`), voice
+messages are transcribed locally and flow into the same pipeline —
+the bot shows "Heard: …" plus the proposal/answer. English works
+best; Derja is lossy and the Confirm screen catches mishearings.
+Transcription failures degrade to "type it instead".
+
 ## Layout
 
 ```

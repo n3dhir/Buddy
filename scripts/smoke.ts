@@ -139,6 +139,11 @@ async function main() {
   delete process.env.OLLAMA_HOST;
   delete process.env.OLLAMA_TIMEOUT_MS;
 
+  // Voice: graceful degradation without real audio (no network/model needed).
+  const voice = await import("../src/telegram/voice.js");
+  await expectFail(() => voice.transcribeVoice("x", "y", 9999), "voice too long");
+  await expectFail(() => voice.transcribeVoice("bad-id", "bad-token", 5), "voice fetch fails");
+
   await closeDb();
   console.log("SMOKE OK");
 }
