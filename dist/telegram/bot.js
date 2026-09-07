@@ -3,6 +3,7 @@ import { ctxForChat, linkChat, unlinkChat } from "./link.js";
 import { HELP, cmdUndo, dispatch, executeIntent, parseCommand } from "./commands.js";
 import { formatProposal, LLMUnavailable, missingFields, needsConfirm, parseFreeText, scopeForAction } from "./llm.js";
 import { savePending, takePending } from "./pending.js";
+import { transcribeVoice, VoiceUnavailable } from "./voice.js";
 export function isTelegramConfigured() {
     return Boolean(process.env.TELEGRAM_BOT_TOKEN);
 }
@@ -121,17 +122,10 @@ export async function getTelegramBot() {
         const intent = takePending(ctx.match[1], ctx.chat.id);
         await ctx.editMessageText(intent ? "❌ Cancelled — nothing logged." : "Already expired.");
     });
-    // NOTE: grammy runs every matching handler, so commands handled
-    // above would ALSO land here — the "/" guard stops double replies.
-    bot.on("message:text", async (ctx) => {
-        const text = ctx.message?.text ?? "";
-        if (text.trim().startsWith("/"))
-            return;
-        const auth = await ctxForChat(ctx.chat.id);
-        if (!auth) {
-            await ctx.reply("🔗 Link this chat first: /start <token from the Tokens page>");
-            return;
-        }
+    // Shared by typed text and voice transcripts: parse -> validate ->
+    // reads answer instantly, writes wait for Confirm. heardPrefix is
+    // the 🎤 line voice adds so mishearings are visible pre-confirm.
+    async function handleTranscript(ctx, auth, text, heardPrefix = "") {
         let intent;
         try {
             await ctx.replyWithChatAction("typing");
@@ -147,24 +141,24 @@ export async function getTelegramBot() {
             return;
         }
         if (intent.action === "unknown") {
-            await ctx.reply("🤷 I didn't get that. Try:\n" + HELP);
+            await ctx.reply(`${heardPrefix}🤷 I didn't get that. Try:\n` + HELP);
             return;
         }
         const missing = missingFields(intent);
         if (missing.length > 0) {
-            await ctx.reply(`Almost — I need: ${missing.join(" + ")}.\nExample: “shawarma 12.5”.`);
+            await ctx.reply(`${heardPrefix}Almost — I need: ${missing.join(" + ")}.\nExample: “shawarma 12.5”.`);
             return;
         }
         const scope = scopeForAction(intent.action);
         if (scope && !auth.can(scope)) {
-            await ctx.reply(`⛔ I understood (${intent.action}), but your token lacks ${scope}. Mint a wider token (Tokens page) and /start again.`);
+            await ctx.reply(`${heardPrefix}⛔ I understood (${intent.action}), but your token lacks ${scope}. Mint a wider token (Tokens page) and /start again.`);
             return;
         }
         // Reads are harmless: answer right away. Writes go through Confirm.
         if (!needsConfirm(intent.action)) {
             try {
                 const reply = await executeIntent(auth, intent);
-                await ctx.reply(reply.text);
+                await ctx.reply(heardPrefix + reply.text);
             }
             catch (e) {
                 await ctx.reply(errText(e));
@@ -178,7 +172,49 @@ export async function getTelegramBot() {
         }
         const id = savePending(ctx.chat.id, intent);
         const kb = new InlineKeyboard().text("✅ Confirm", `lc:${id}`).text("❌ Cancel", `lx:${id}`);
-        await ctx.reply(proposal, { reply_markup: kb });
+        await ctx.reply(heardPrefix + proposal, { reply_markup: kb });
+    }
+    // NOTE: grammy runs every matching handler, so commands handled
+    // above would ALSO land here — the "/" guard stops double replies.
+    bot.on("message:text", async (ctx) => {
+        const text = ctx.message?.text ?? "";
+        if (text.trim().startsWith("/"))
+            return;
+        const auth = await ctxForChat(ctx.chat.id);
+        if (!auth) {
+            await ctx.reply("🔗 Link this chat first: /start <token from the Tokens page>");
+            return;
+        }
+        await handleTranscript(ctx, auth, text);
+    });
+    bot.on("message:voice", async (ctx) => {
+        const auth = await ctxForChat(ctx.chat.id);
+        if (!auth) {
+            await ctx.reply("🔗 Link this chat first: /start <token from the Tokens page>");
+            return;
+        }
+        const voice = ctx.message?.voice;
+        if (!voice)
+            return;
+        await ctx.replyWithChatAction("typing");
+        let transcript;
+        try {
+            transcript = await transcribeVoice(voice.file_id, process.env.TELEGRAM_BOT_TOKEN, voice.duration);
+        }
+        catch (e) {
+            if (e instanceof VoiceUnavailable) {
+                await ctx.reply(`🎤 ${e.message}`);
+            }
+            else {
+                await ctx.reply(errText(e));
+            }
+            return;
+        }
+        if (!transcript) {
+            await ctx.reply("🎤 Couldn't hear anything — try again or type it.");
+            return;
+        }
+        await handleTranscript(ctx, auth, transcript, `🎤 Heard: “${transcript}”\n`);
     });
     // Webhook-only mode never calls bot.start(), so fetch bot info
     // (getMe) explicitly — otherwise the first handleUpdate throws
