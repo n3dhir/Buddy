@@ -1,6 +1,6 @@
 node_modules/
-rafiq.db
-rafiq.db-journal
+buddy.db
+buddy.db-journal
 .env
 *.local
 .DS_Store

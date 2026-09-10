@@ -287,7 +287,7 @@ export default function Dashboard() {
         </section>
 
         <footer className="mt-12 border-t border-hairline pt-6 text-xs text-ink-tertiary">
-          Rafiq · Tunis time (UTC+1) · refresh to sync changes made via chat
+          Buddy · Tunis time (UTC+1) · refresh to sync changes made via chat
         </footer>
       </main>
 

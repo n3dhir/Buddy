@@ -1,7 +1,7 @@
 {
-  "name": "rafiq",
+  "name": "buddy",
   "version": "0.1.0",
-  "description": "Rafiq — personal MCP server (v1: finance)",
+  "description": "Buddy — personal MCP server (v1: finance)",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

@@ -31,7 +31,7 @@ export interface Breakdown {
 export type Period = "week" | "month" | "year";
 
 export function getToken(): string | null {
-  return localStorage.getItem("rafiq_token");
+  return localStorage.getItem("buddy_token");
 }
 
 export interface AuthUser {
@@ -55,7 +55,7 @@ export const ALL_SCOPES = [
 
 export function getUser(): AuthUser | null {
   try {
-    const raw = localStorage.getItem("rafiq_user");
+    const raw = localStorage.getItem("buddy_user");
     return raw ? (JSON.parse(raw) as AuthUser) : null;
   } catch {
     return null;
@@ -63,14 +63,14 @@ export function getUser(): AuthUser | null {
 }
 
 export function setToken(t: string | null) {
-  if (t) localStorage.setItem("rafiq_token", t);
-  else localStorage.removeItem("rafiq_token");
+  if (t) localStorage.setItem("buddy_token", t);
+  else localStorage.removeItem("buddy_token");
 }
 
 export function setSession(token: string | null, user: AuthUser | null) {
   setToken(token);
-  if (user) localStorage.setItem("rafiq_user", JSON.stringify(user));
-  else localStorage.removeItem("rafiq_user");
+  if (user) localStorage.setItem("buddy_user", JSON.stringify(user));
+  else localStorage.removeItem("buddy_user");
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

@@ -27,9 +27,9 @@ export default function TopNav({
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
         <div className="flex items-center gap-2.5">
           <button onClick={() => navigate("/dashboard")} aria-label="Dashboard">
-            <img src={logoUrl} alt="Rafiq logo" className="h-7 w-7 rounded-lg" />
+            <img src={logoUrl} alt="Buddy logo" className="h-7 w-7 rounded-lg" />
           </button>
-          <span className="hidden text-sm font-medium min-[420px]:inline">Rafiq</span>
+          <span className="hidden text-sm font-medium min-[420px]:inline">Buddy</span>
           <div className="hidden items-center gap-1 sm:flex">
             <NavLink to="/dashboard" className={({ isActive }) => (isActive ? pillActive : pillIdle)}>
               Dashboard

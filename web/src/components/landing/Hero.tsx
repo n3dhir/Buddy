@@ -16,7 +16,7 @@ export default function Hero() {
         Personal finance, chat-native.
       </h1>
       <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-muted">
-        Rafiq tracks expenses two ways — a React web app and an MCP server your
+        Buddy tracks expenses two ways — a React web app and an MCP server your
         AI assistant calls mid-conversation — on one TypeScript core over
         Postgres. Same functions, same validation, same data.
       </p>

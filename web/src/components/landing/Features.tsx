@@ -7,7 +7,7 @@ const FEATURES = [
   },
   {
     title: "Scoped API tokens",
-    text: "Mint unlimited rafiq_ tokens with per-token scopes, edit them live, revoke anytime. Your token is your MCP credential.",
+    text: "Mint unlimited buddy_ tokens with per-token scopes, edit them live, revoke anytime. Your token is your MCP credential.",
   },
   {
     title: "Parity by construction",
