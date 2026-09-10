@@ -10,7 +10,7 @@ function err(e) {
     return { content: [{ type: "text", text: message }], isError: true };
 }
 export function createServer(auth = () => sysCtx()) {
-    const server = new McpServer({ name: "rafiq", version: "0.1.0" });
+    const server = new McpServer({ name: "buddy", version: "0.1.0" });
     server.registerTool("log_expense", {
         title: "Log expense",
         description: "Record a spending entry. payment_method is free-form (e.g. cash, card, bank transfer).",

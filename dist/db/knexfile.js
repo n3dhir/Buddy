@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // so a bare dotenv/config would look for .env in the wrong place.
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 function sqliteConfig(ext) {
-    const dbPath = process.env.RAFIQ_DB_PATH ?? path.join(__dirname, "..", "..", "rafiq.db");
+    const dbPath = process.env.BUDDY_DB_PATH ?? path.join(__dirname, "..", "..", "buddy.db");
     return {
         client: "better-sqlite3",
         connection: { filename: dbPath },

@@ -74,7 +74,7 @@ export async function authenticate(input) {
 export async function createToken(userId, input) {
     const { name, scopes } = CreateTokenSchema.parse(input);
     const db = getDb();
-    const token = `rafiq_${crypto.randomBytes(24).toString("hex")}`;
+    const token = `buddy_${crypto.randomBytes(24).toString("hex")}`;
     const [id] = await db("tokens")
         .insert({
         user_id: userId,

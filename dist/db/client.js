@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 function buildConfig() {
     if (process.env.DB_CLIENT === "sqlite") {
-        const dbPath = process.env.RAFIQ_DB_PATH ?? path.join(__dirname, "..", "..", "rafiq.db");
+        const dbPath = process.env.BUDDY_DB_PATH ?? path.join(__dirname, "..", "..", "buddy.db");
         return {
             client: "better-sqlite3",
             connection: { filename: dbPath },

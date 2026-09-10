@@ -36,7 +36,7 @@ export async function getTelegramBot() {
     bot.command("start", async (ctx) => {
         const arg = ctx.match.trim();
         if (!arg) {
-            await ctx.reply("Welcome to Rafiq 👋\nLink this chat first: /start <token>\nMint the token in the web UI (Tokens page) — the chat gets exactly that token's scopes.");
+            await ctx.reply("Welcome to Buddy 👋\nLink this chat first: /start <token>\nMint the token in the web UI (Tokens page) — the chat gets exactly that token's scopes.");
             return;
         }
         try {

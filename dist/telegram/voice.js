@@ -49,7 +49,7 @@ export async function transcribeVoice(fileId, botToken, durationSec) {
     if (!meta?.ok || !meta?.result?.file_path) {
         throw new VoiceUnavailable("Telegram wouldn't hand over the voice file — try again.");
     }
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rafiq-voice-"));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "buddy-voice-"));
     const ogg = path.join(dir, `in-${crypto.randomBytes(4).toString("hex")}.ogg`);
     const wav = path.join(dir, "in.wav");
     try {
