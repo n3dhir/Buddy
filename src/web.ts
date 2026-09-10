@@ -42,9 +42,7 @@ app.use(express.json());
 // - UI session: JWT {sub: userId} from /api/auth/login (full entry scopes)
 // - API tokens: opaque, user-created with chosen scopes, hashed at rest
 function jwtSecret() {
-  // Renamed RAFIQ_* -> BUDDY_*; old names still honored so existing
-  // deploys keep working without an .env change.
-  return process.env.BUDDY_JWT_SECRET ?? process.env.RAFIQ_JWT_SECRET;
+  return process.env.BUDDY_JWT_SECRET;
 }
 
 function mintSession(userId) {

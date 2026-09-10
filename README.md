@@ -64,7 +64,7 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
     "buddy": {
       "command": "node",
       "args": ["/mnt/data/projects/Buddy/dist/server.js"],
-      "env": { "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/rafiq" }
+      "env": { "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/buddy" }
     }
   }
 }

@@ -31,7 +31,7 @@ async function expectFail(fn: () => Promise<unknown>, label: string) {
 
 async function main() {
   process.env.DB_CLIENT ??= "sqlite";
-  process.env.BUDDY_DB_PATH ??= process.env.RAFIQ_DB_PATH ?? ":memory:";
+  process.env.BUDDY_DB_PATH ??= ":memory:";
   const db = getDb();
   await db.migrate.latest();
 

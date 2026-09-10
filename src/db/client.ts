@@ -11,7 +11,7 @@ dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 function buildConfig(): Knex.Config {
   if (process.env.DB_CLIENT === "sqlite") {
     const dbPath =
-      process.env.BUDDY_DB_PATH ?? process.env.RAFIQ_DB_PATH ?? path.join(__dirname, "..", "..", "buddy.db");
+      process.env.BUDDY_DB_PATH ?? path.join(__dirname, "..", "..", "buddy.db");
     return {
       client: "better-sqlite3",
       connection: { filename: dbPath },
