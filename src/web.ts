@@ -41,8 +41,14 @@ app.use(express.json());
 // Auth: users table. Two credential kinds, both Bearer:
 // - UI session: JWT {sub: userId} from /api/auth/login (full entry scopes)
 // - API tokens: opaque, user-created with chosen scopes, hashed at rest
+function jwtSecret() {
+  // Renamed RAFIQ_* -> BUDDY_*; old names still honored so existing
+  // deploys keep working without an .env change.
+  return process.env.BUDDY_JWT_SECRET ?? process.env.RAFIQ_JWT_SECRET;
+}
+
 function mintSession(userId) {
-  return jwt.sign({ sub: userId }, process.env.RAFIQ_JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign({ sub: userId }, jwtSecret(), { expiresIn: "30d" });
 }
 
 async function resolveAuth(req) {
@@ -54,7 +60,7 @@ async function resolveAuth(req) {
     // fall through to session JWT
   }
   try {
-    const payload: any = jwt.verify(bearer, process.env.RAFIQ_JWT_SECRET);
+    const payload: any = jwt.verify(bearer, jwtSecret());
     return ctxFor(Number(payload.sub), [...SCOPES]);
   } catch {
     fail("unauthorized", 401);
@@ -244,4 +250,4 @@ app.use((req, res, next) => {
 });
 
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, () => console.log(`rafiq web on :${port}`));
+app.listen(port, () => console.log(`buddy web on :${port}`));

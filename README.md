@@ -1,4 +1,4 @@
-# Rafiq — personal finance (MCP + web)
+# Buddy — personal finance (MCP + web)
 
 Expense/income tracker exposed two ways, one shared Postgres DB:
 chat via MCP tools, full read/write UI via web. Refresh the page to see
@@ -10,10 +10,10 @@ chat-made changes (no live sync by design).
 cp .env.example .env   # set DATABASE_URL, PORT
 npm install
 npm run migrate        # creates `transactions` table
-npm run import:pg      # one-off: copy legacy rafiq.db (SQLite) rows into PG
+npm run import:pg      # one-off: copy legacy buddy.db (SQLite) rows into PG
 ```
 
-Legacy SQLite fallback (smoke tests): `DB_CLIENT=sqlite RAFIQ_DB_PATH=...`.
+Legacy SQLite fallback (smoke tests): `DB_CLIENT=sqlite BUDDY_DB_PATH=...`.
 
 ## Run
 
@@ -61,9 +61,9 @@ Default currency `TND`, default date = today in Tunisia time (`Africa/Tunis`
 ```json
 {
   "mcpServers": {
-    "rafiq": {
+    "buddy": {
       "command": "node",
-      "args": ["/mnt/data/projects/Rafiq/dist/server.js"],
+      "args": ["/mnt/data/projects/Buddy/dist/server.js"],
       "env": { "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/rafiq" }
     }
   }
@@ -82,10 +82,10 @@ Registration is always open; the first registrant inherits legacy
 ownerless rows. Every row belongs to the user who created it.
 
 - `POST /api/auth/register`, `POST /api/auth/login` → session JWT
-  (`RAFIQ_JWT_SECRET`, 30d) for the UI.
+  (`BUDDY_JWT_SECRET`, 30d) for the UI.
 - `GET/POST /api/tokens`, `DELETE /api/tokens/:id` → mint as many tokens
   as you want, each with the scopes **you** pick (`entries:create/read/
-  update/delete`). Shown once (`rafiq_…`, sha256 at rest), revocable.
+  update/delete`). Shown once (`buddy_…`, sha256 at rest), revocable.
 - Every tool and endpoint executes as the caller: a token without
   `entries:delete` gets 403 on deletes; rows are scoped per user.
   Your token *is* your MCP credential (same bearer header).
@@ -93,22 +93,22 @@ ownerless rows. Every row belongs to the user who created it.
 On the VPS (pm2 + system Postgres + nginx):
 
 ```bash
-git clone <repo> && cd rafiq
+git clone <repo> && cd buddy
 npm install && npm run build --prefix web
 cp .env.example .env   # DATABASE_URL (local PG), PORT=3000
-                       # RAFIQ_PASSWORD=<pick one>, RAFIQ_JWT_SECRET=$(openssl rand -hex 32)
-npm run migrate
+                       # BUDDY_JWT_SECRET=$(openssl rand -hex 32)
 npm run build
-pm2 start dist/web.js --name rafiq-web && pm2 save
+npm run migrate:prod   # plain node, no devDependencies needed
+pm2 start dist/web.js --name buddy-web && pm2 save
 # reverse-proxy + TLS in front (nginx/Caddy), forwarding to :3000
 ```
 
 On localhost, point the MCP client at the server (Claude Code shown).
-Get a JWT first: `curl -s -X POST https://rafiq.example.com/api/login
+Get a JWT first: `curl -s -X POST https://buddy.example.com/api/login
 -H 'Content-Type: application/json' -d '{"password":"..."}'`, then:
 
 ```bash
-claude mcp add --transport http rafiq https://rafiq.example.com/mcp \
+claude mcp add --transport http buddy https://buddy.example.com/mcp \
   --header "Authorization: Bearer <JWT>"
 ```
 

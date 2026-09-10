@@ -6,7 +6,7 @@ import { btnPrimary, card, eyebrow, input } from "../ui";
 
 const POINTS = [
   ["chat-native", "Log expenses from Claude, review them here. One core, two doors."],
-  ["scoped tokens", "Mint rafiq_ tokens with exactly the permissions each client needs."],
+  ["scoped tokens", "Mint buddy_ tokens with exactly the permissions each client needs."],
   ["Tunis-time correct", "Dates, stamps, and summaries on Africa/Tunis — midnight included."],
 ];
 
@@ -41,12 +41,12 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
         {/* Brand panel */}
         <div className="flex flex-col justify-center gap-8 px-4 pb-4 pt-6 sm:px-6 min-[700px]:gap-12 min-[700px]:pb-8 min-[700px]:pt-8 lg:py-12">
           <Link to="/" className="flex items-center gap-2.5">
-            <img src={logoUrl} alt="Rafiq logo" className="h-7 w-7 rounded-lg" />
-            <span className="text-sm font-medium text-ink">Rafiq</span>
+            <img src={logoUrl} alt="Buddy logo" className="h-7 w-7 rounded-lg" />
+            <span className="text-sm font-medium text-ink">Buddy</span>
           </Link>
           <div className="rise mt-8 md:mt-0">
             <p className={eyebrow}>
-              {mode === "login" ? "WELCOME BACK" : "JOIN RAFIQ"}
+              {mode === "login" ? "WELCOME BACK" : "JOIN BUDDY"}
             </p>
             <h1 className="mt-3 max-w-md text-[28px] font-semibold tracking-tight text-ink min-[700px]:text-4xl xl:text-5xl">
               {mode === "login" ? "Pick up where your money left off." : "Your money, chat-native in minutes."}

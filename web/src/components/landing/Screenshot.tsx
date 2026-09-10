@@ -6,11 +6,11 @@ export default function Screenshot() {
           <span className="h-2.5 w-2.5 rounded-full bg-hairline-strong" aria-hidden />
           <span className="h-2.5 w-2.5 rounded-full bg-hairline-strong" aria-hidden />
           <span className="h-2.5 w-2.5 rounded-full bg-hairline-strong" aria-hidden />
-          <span className="ml-2 font-mono text-xs text-ink-tertiary">rafiq — dashboard</span>
+          <span className="ml-2 font-mono text-xs text-ink-tertiary">buddy — dashboard</span>
         </div>
         <img
           src="/shot-dashboard.png"
-          alt="Rafiq dashboard: monthly summary, spending by category, and entries"
+          alt="Buddy dashboard: monthly summary, spending by category, and entries"
           className="w-full rounded-xl border border-hairline"
           loading="lazy"
         />

@@ -8,7 +8,7 @@ import {
 } from "../tools/finance.js";
 
 export const HELP = [
-  "Rafiq bot commands:",
+  "Buddy bot commands:",
   "/expense <amount> <category> [note] — log spending",
   "/income <amount> <category> [note] — log income",
   "/summary <week|month|year> [category] — totals",

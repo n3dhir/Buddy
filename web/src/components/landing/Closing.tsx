@@ -22,8 +22,8 @@ export default function Closing() {
       <footer className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="flex flex-col gap-4 border-t border-hairline pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2.5">
-            <img src={logoUrl} alt="Rafiq logo" className="h-6 w-6 rounded-md" />
-            <span className="text-sm text-ink-subtle">Rafiq · personal finance infrastructure</span>
+            <img src={logoUrl} alt="Buddy logo" className="h-6 w-6 rounded-md" />
+            <span className="text-sm text-ink-subtle">Buddy · personal finance infrastructure</span>
           </div>
           <div className="flex items-center gap-5 text-sm text-ink-subtle">
             <Link to="/dashboard" className="hover:text-ink">Live app</Link>

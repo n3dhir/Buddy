@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import { getDb, closeDb } from "../src/db/client.js";
 
-// One-off: copy rows from legacy rafiq.db (SQLite) into Postgres.
+// One-off: copy rows from legacy buddy.db (SQLite) into Postgres.
 // Preserves ids; treats stored wall timestamps as Tunis time.
-// Usage: SQLITE_PATH=./rafiq.db DATABASE_URL=... npx tsx scripts/import-sqlite-to-pg.ts
+// Usage: SQLITE_PATH=./buddy.db DATABASE_URL=... npx tsx scripts/import-sqlite-to-pg.ts
 
 // Tunis wall "YYYY-MM-DD HH:MM:SS" -> UTC instant (Tunis is fixed UTC+1).
 const toInstant = (s: string) =>
@@ -13,7 +13,7 @@ const toInstant = (s: string) =>
 async function main() {
   const sqlitePath =
     process.env.SQLITE_PATH ??
-    path.join(process.cwd(), "rafiq.db");
+    path.join(process.cwd(), "buddy.db");
   const src = new Database(sqlitePath, { readonly: true });
   const rows = src
     .prepare("SELECT * FROM transactions ORDER BY id")

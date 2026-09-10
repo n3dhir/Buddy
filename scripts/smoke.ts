@@ -31,7 +31,7 @@ async function expectFail(fn: () => Promise<unknown>, label: string) {
 
 async function main() {
   process.env.DB_CLIENT ??= "sqlite";
-  process.env.RAFIQ_DB_PATH ??= ":memory:";
+  process.env.BUDDY_DB_PATH ??= process.env.RAFIQ_DB_PATH ?? ":memory:";
   const db = getDb();
   await db.migrate.latest();
 
@@ -97,10 +97,10 @@ async function main() {
   if (!logged.undoId) throw new Error("telegram: expected undoId");
   const undone = await cmdUndo(tgCtx, logged.undoId);
   console.log("telegram undo:", undone.text);
-  const parsed = parseCommand("/summary@rafiq_bot month");
+  const parsed = parseCommand("/summary@buddy_bot month");
   if (parsed.cmd !== "summary") throw new Error("telegram: @botname parse failed");
   console.log("telegram summary:", (await dispatch(tgCtx, parsed.cmd, parsed.argStr)).text);
-  await expectFail(() => linkChat(4242, "rafiq_bogus"), "bad link token");
+  await expectFail(() => linkChat(4242, "buddy_bogus"), "bad link token");
   await revokeToken(owner.id, tgToken.id);
   await expectFail(() => ctxForChat(4242), "revoked link token");
   await unlinkChat(4242);

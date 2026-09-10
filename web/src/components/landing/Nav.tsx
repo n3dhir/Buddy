@@ -6,8 +6,8 @@ export default function Nav() {
     <nav className="sticky top-0 z-10 border-b border-hairline bg-canvas/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link to="/" className="flex items-center gap-2.5">
-          <img src={logoUrl} alt="Rafiq logo" className="h-7 w-7 rounded-lg" />
-          <span className="text-sm font-medium text-ink">Rafiq</span>
+          <img src={logoUrl} alt="Buddy logo" className="h-7 w-7 rounded-lg" />
+          <span className="text-sm font-medium text-ink">Buddy</span>
         </Link>
         <div className="hidden items-center gap-6 text-sm text-ink-subtle md:flex">
           <a href="#product" className="hover:text-ink">Product</a>

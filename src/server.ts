@@ -27,7 +27,7 @@ function err(e) {
 }
 
 export function createServer(auth = () => sysCtx()) {
-  const server = new McpServer({ name: "rafiq", version: "0.1.0" });
+  const server = new McpServer({ name: "buddy", version: "0.1.0" });
 
   server.registerTool(
     "log_expense",
